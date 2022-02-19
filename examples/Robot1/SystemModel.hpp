@@ -1,11 +1,11 @@
-#ifndef KALMAN_EXAMPLES1_ROBOT_SYSTEMMODEL_HPP_
-#define KALMAN_EXAMPLES1_ROBOT_SYSTEMMODEL_HPP_
+#ifndef KALMAN_TRACKING_LIDAR_SYSTEMMODEL_HPP_
+#define KALMAN_TRACKING_LIDAR_SYSTEMMODEL_HPP_
 
 #include <kalman/LinearizedSystemModel.hpp>
 
-namespace KalmanExamples
+namespace KalmanTracking
 {
-namespace Robot1
+namespace LidarTarget
 {
 
 /**
@@ -26,7 +26,7 @@ public:
     static constexpr size_t X = 0;
     //! Y-Position
     static constexpr size_t Y = 1;
-    //! Orientation
+    //! Z-Position
     static constexpr size_t THETA = 2;
     
     T x()       const { return (*this)[ X ]; }
@@ -81,10 +81,10 @@ class SystemModel : public Kalman::LinearizedSystemModel<State<T>, Control<T>, C
 {
 public:
     //! State type shortcut definition
-	typedef KalmanExamples::Robot1::State<T> S;
+	typedef KalmanTracking::LidarTarget::State<T> S;
     
     //! Control type shortcut definition
-    typedef KalmanExamples::Robot1::Control<T> C;
+    typedef KalmanTracking::LidarTarget::Control<T> C;
     
     /**
      * @brief Definition of (non-linear) state transition function
@@ -161,7 +161,7 @@ protected:
     }
 };
 
-} // namespace Robot
-} // namespace KalmanExamples
+} // namespace LidarTarget
+} // namespace KalmanTracking
 
 #endif

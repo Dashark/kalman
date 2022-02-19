@@ -17,19 +17,19 @@
 #include <chrono>
 
 
-using namespace KalmanExamples;
+using namespace KalmanTracking;
 
 typedef float T;
 
 // Some type shortcuts
-typedef Robot1::State<T> State;
-typedef Robot1::Control<T> Control;
-typedef Robot1::SystemModel<T> SystemModel;
+typedef LidarTarget::State<T> State;
+typedef LidarTarget::Control<T> Control;
+typedef LidarTarget::SystemModel<T> SystemModel;
 
-typedef Robot1::PositionMeasurement<T> PositionMeasurement;
-typedef Robot1::OrientationMeasurement<T> OrientationMeasurement;
-typedef Robot1::PositionMeasurementModel<T> PositionModel;
-typedef Robot1::OrientationMeasurementModel<T> OrientationModel;
+typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
+typedef LidarTarget::OrientationMeasurement<T> OrientationMeasurement;
+typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
+typedef LidarTarget::OrientationMeasurementModel<T> OrientationModel;
 
 int main(int argc, char** argv)
 {

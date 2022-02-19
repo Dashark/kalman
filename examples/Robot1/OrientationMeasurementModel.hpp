@@ -1,11 +1,11 @@
-#ifndef KALMAN_EXAMPLES_ROBOT1_ORIENTATIONMEASUREMENTMODEL_HPP_
-#define KALMAN_EXAMPLES_ROBOT1_ORIENTATIONMEASUREMENTMODEL_HPP_
+#ifndef KALMAN_TRACKING_LIDAR_ORIENTATIONMEASUREMENTMODEL_HPP_
+#define KALMAN_TRACKING_LIDAR_ORIENTATIONMEASUREMENTMODEL_HPP_
 
 #include <kalman/LinearizedMeasurementModel.hpp>
 
-namespace KalmanExamples
+namespace KalmanTracking
 {
-namespace Robot1
+namespace LidarTarget
 {
 
 /**
@@ -42,10 +42,10 @@ class OrientationMeasurementModel : public Kalman::LinearizedMeasurementModel<St
 {
 public:
     //! State type shortcut definition
-    typedef KalmanExamples::Robot1::State<T> S;
+    typedef KalmanTracking::LidarTarget::State<T> S;
     
     //! Measurement type shortcut definition
-    typedef  KalmanExamples::Robot1::OrientationMeasurement<T> M;
+    typedef KalmanTracking::LidarTarget::OrientationMeasurement<T> M;
     
     OrientationMeasurementModel()
     {
@@ -76,7 +76,7 @@ public:
     }
 };
 
-} // namespace Robot
-} // namespace KalmanExamples
+} // namespace LidarTarget
+} // namespace KalmanTracking
 
 #endif

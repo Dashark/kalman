@@ -1,11 +1,11 @@
-#ifndef KALMAN_EXAMPLES_ROBOT1_POSITIONMEASUREMENTMODEL_HPP_
-#define KALMAN_EXAMPLES_ROBOT1_POSITIONMEASUREMENTMODEL_HPP_
+#ifndef KALMAN_TRACKING_LIDAR_POSITIONMEASUREMENTMODEL_HPP_
+#define KALMAN_TRACKING_LIDAR_POSITIONMEASUREMENTMODEL_HPP_
 
 #include <kalman/LinearizedMeasurementModel.hpp>
 
-namespace KalmanExamples
+namespace KalmanTracking
 {
-namespace Robot1
+namespace LidarTarget
 {
 
 /**
@@ -51,10 +51,10 @@ class PositionMeasurementModel : public Kalman::LinearizedMeasurementModel<State
 {
 public:
     //! State type shortcut definition
-    typedef  KalmanExamples::Robot1::State<T> S;
+    typedef  KalmanTracking::LidarTarget::State<T> S;
     
     //! Measurement type shortcut definition
-    typedef  KalmanExamples::Robot1::PositionMeasurement<T> M;
+    typedef  KalmanTracking::LidarTarget::PositionMeasurement<T> M;
     
     /**
      * @brief Constructor
@@ -159,7 +159,7 @@ protected:
     }
 };
 
-} // namespace Robot
-} // namespace KalmanExamples
+} // namespace LidarTarget
+} // namespace KalmanTracking
 
 #endif
