@@ -9,10 +9,10 @@ namespace LidarTarget
 {
 
 /**
- * @brief System state vector-type for a 3DOF planar robot
+ * @brief System state vector-type for a Lidar object
  *
- * This is a system state for a very simple planar robot that
- * is characterized by its (x,y)-Position and angular orientation.
+ * This is a system state for a very simple Lidar object that
+ * is characterized by its (x,y,z)-Position.
  *
  * @param T Numeric scalar type
  */
@@ -27,48 +27,51 @@ public:
     //! Y-Position
     static constexpr size_t Y = 1;
     //! Z-Position
-    static constexpr size_t THETA = 2;
+    static constexpr size_t Z = 2;
     
     T x()       const { return (*this)[ X ]; }
     T y()       const { return (*this)[ Y ]; }
-    T theta()   const { return (*this)[ THETA ]; }
+    T z()       const { return (*this)[ Z ]; }
     
     T& x()      { return (*this)[ X ]; }
     T& y()      { return (*this)[ Y ]; }
-    T& theta()  { return (*this)[ THETA ]; }
+    T& z()      { return (*this)[ Z ]; }
 };
 
 /**
- * @brief System control-input vector-type for a 3DOF planar robot
+ * @brief System control-input vector-type for a Lidar object
  *
- * This is the system control-input of a very simple planar robot that
- * can control the velocity in its current direction as well as the
- * change in direction.
+ * This is the system control-input of a very simple Lidar object.
+ * 它控制目标在三维方向上的变化量，它们同时隐含了目标的运动方向
  *
  * @param T Numeric scalar type
  */
 template<typename T>
-class Control : public Kalman::Vector<T, 2>
+class Control : public Kalman::Vector<T, 3>
 {
 public:
-    KALMAN_VECTOR(Control, T, 2)
+    KALMAN_VECTOR(Control, T, 3)
     
-    //! Velocity
-    static constexpr size_t V = 0;
-    //! Angular Rate (Orientation-change)
-    static constexpr size_t DTHETA = 1;
+    //! delta X
+    static constexpr size_t dX = 0;
+    //! delta Y
+    static constexpr size_t dY = 1;
+    //! delta Z
+    static constexpr size_t dZ = 2;
     
-    T v()       const { return (*this)[ V ]; }
-    T dtheta()  const { return (*this)[ DTHETA ]; }
+    T dx()       const { return (*this)[ dX ]; }
+    T dy()       const { return (*this)[ dY ]; }
+    T dz()       const { return (*this)[ dZ ]; }
     
-    T& v()      { return (*this)[ V ]; }
-    T& dtheta() { return (*this)[ DTHETA ]; }
+    T& dx()      { return (*this)[ dX ]; }
+    T& dy()      { return (*this)[ dY ]; }
+    T& dz()      { return (*this)[ dZ ]; }
 };
 
 /**
- * @brief System model for a simple planar 3DOF robot
+ * @brief System model for a simple Lidar object
  *
- * This is the system model defining how our robot moves from one 
+ * This is the system model defining how our Lidar object moves from one 
  * time-step to the next, i.e. how the system state evolves over time.
  *
  * @param T Numeric scalar type
@@ -103,24 +106,19 @@ public:
         //! Predicted state vector after transition
         S x_;
         
-        // New orientation given by old orientation plus orientation change
-        auto newOrientation = x.theta() + u.dtheta();
-        // Re-scale orientation to [-pi/2 to +pi/2]
-        
-        x_.theta() = newOrientation;
-        
         // New x-position given by old x-position plus change in x-direction
         // Change in x-direction is given by the cosine of the (new) orientation
         // times the velocity
-        x_.x() = x.x() + std::cos( newOrientation ) * u.v();
-        x_.y() = x.y() + std::sin( newOrientation ) * u.v();
+        x_.x() = x.x() + u.dx();
+        x_.y() = x.y() + u.dy();
+        x_.z() = x.z() + u.dz();
         
         // Return transitioned state vector
         return x_;
     }
     
 protected:
-    /**
+    /** 不简单，线性模型按照非线性泰勒级数展开，每次都要更新矩阵F，不更新是纯线性方程
      * @brief Update jacobian matrices for the system state transition function using current state
      *
      * This will re-compute the (state-dependent) elements of the jacobian matrices
