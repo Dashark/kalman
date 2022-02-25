@@ -17,10 +17,10 @@ namespace LidarTarget
  * @param T Numeric scalar type
  */
 template<typename T>
-class State : public Kalman::Vector<T, 3>
+class State : public Kalman::Vector<T, 6>
 {
 public:
-    KALMAN_VECTOR(State, T, 3)
+    KALMAN_VECTOR(State, T, 6)
     
     //! X-position
     static constexpr size_t X = 0;
@@ -28,14 +28,26 @@ public:
     static constexpr size_t Y = 1;
     //! Z-Position
     static constexpr size_t Z = 2;
+    //! Length
+    static constexpr size_t L = 3;
+    //! Width
+    static constexpr size_t W = 4;
+    //! Height
+    static constexpr size_t H = 5;
     
     T x()       const { return (*this)[ X ]; }
     T y()       const { return (*this)[ Y ]; }
     T z()       const { return (*this)[ Z ]; }
+    T length()       const { return (*this)[ L ]; }
+    T width()        const { return (*this)[ W ]; }
+    T height()       const { return (*this)[ H ]; }
     
     T& x()      { return (*this)[ X ]; }
     T& y()      { return (*this)[ Y ]; }
     T& z()      { return (*this)[ Z ]; }
+    T& length()       { return (*this)[ L ]; }
+    T& width()        { return (*this)[ W ]; }
+    T& height()       { return (*this)[ H ]; }
 };
 
 /**
@@ -47,10 +59,10 @@ public:
  * @param T Numeric scalar type
  */
 template<typename T>
-class Control : public Kalman::Vector<T, 3>
+class Control : public Kalman::Vector<T, 6>
 {
 public:
-    KALMAN_VECTOR(Control, T, 3)
+    KALMAN_VECTOR(Control, T, 6)
     
     //! delta X
     static constexpr size_t dX = 0;
@@ -58,14 +70,26 @@ public:
     static constexpr size_t dY = 1;
     //! delta Z
     static constexpr size_t dZ = 2;
+    //! delta Lenght
+    static constexpr size_t dL = 3;
+    //! delta Width
+    static constexpr size_t dW = 4;
+    //! delta Height
+    static constexpr size_t dH = 5;
     
     T dx()       const { return (*this)[ dX ]; }
     T dy()       const { return (*this)[ dY ]; }
     T dz()       const { return (*this)[ dZ ]; }
+    T dl()       const { return (*this)[ dL ]; }
+    T dw()       const { return (*this)[ dW ]; }
+    T dh()       const { return (*this)[ dH ]; }
     
     T& dx()      { return (*this)[ dX ]; }
     T& dy()      { return (*this)[ dY ]; }
     T& dz()      { return (*this)[ dZ ]; }
+    T& dl()      { return (*this)[ dL ]; }
+    T& dw()      { return (*this)[ dW ]; }
+    T& dh()      { return (*this)[ dH ]; }
 };
 
 /**
@@ -107,11 +131,12 @@ public:
         S x_;
         
         // New x-position given by old x-position plus change in x-direction
-        // Change in x-direction is given by the cosine of the (new) orientation
-        // times the velocity
         x_.x() = x.x() + u.dx();
         x_.y() = x.y() + u.dy();
         x_.z() = x.z() + u.dz();
+        x_.length() = x.length() + u.dl();
+        x_.width() = x.width() + u.dw();
+        x_.height() = x.height() + u.dh();
         
         // Return transitioned state vector
         return x_;
@@ -133,6 +158,7 @@ protected:
      * @param x The current system state around which to linearize
      * @param u The current system control input
      */
+    /*
     void updateJacobians( const S& x, const C& u )
     {
         // F = df/dx (Jacobian of state transition w.r.t. the state)
@@ -157,6 +183,7 @@ protected:
         //       i.e. The noise affects the the direction in which we move as 
         //       well as the velocity (i.e. the distance we move)
     }
+    */
 };
 
 } // namespace LidarTarget
