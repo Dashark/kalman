@@ -17,10 +17,10 @@ namespace LidarTarget
  * @param T Numeric scalar type
  */
 template<typename T>
-class State : public Kalman::Vector<T, 6>
+class State : public Kalman::Vector<T, 7>
 {
 public:
-    KALMAN_VECTOR(State, T, 6)
+    KALMAN_VECTOR(State, T, 7)
     
     //! X-position
     static constexpr size_t X = 0;
@@ -34,6 +34,8 @@ public:
     static constexpr size_t W = 4;
     //! Height
     static constexpr size_t H = 5;
+    //! Intensity
+    static constexpr size_t I = 6;
     
     T x()       const { return (*this)[ X ]; }
     T y()       const { return (*this)[ Y ]; }
@@ -41,6 +43,7 @@ public:
     T length()       const { return (*this)[ L ]; }
     T width()        const { return (*this)[ W ]; }
     T height()       const { return (*this)[ H ]; }
+    T intensity()    const { return (*this)[ I ]; }
     
     T& x()      { return (*this)[ X ]; }
     T& y()      { return (*this)[ Y ]; }
@@ -48,6 +51,7 @@ public:
     T& length()       { return (*this)[ L ]; }
     T& width()        { return (*this)[ W ]; }
     T& height()       { return (*this)[ H ]; }
+    T& intensity()    { return (*this)[ I ]; }
 };
 
 /**
@@ -59,10 +63,10 @@ public:
  * @param T Numeric scalar type
  */
 template<typename T>
-class Control : public Kalman::Vector<T, 6>
+class Control : public Kalman::Vector<T, 7>
 {
 public:
-    KALMAN_VECTOR(Control, T, 6)
+    KALMAN_VECTOR(Control, T, 7)
     
     //! delta X
     static constexpr size_t dX = 0;
@@ -76,6 +80,8 @@ public:
     static constexpr size_t dW = 4;
     //! delta Height
     static constexpr size_t dH = 5;
+    //! delta Intensity
+    static constexpr size_t dI = 6;
     
     T dx()       const { return (*this)[ dX ]; }
     T dy()       const { return (*this)[ dY ]; }
@@ -83,6 +89,7 @@ public:
     T dl()       const { return (*this)[ dL ]; }
     T dw()       const { return (*this)[ dW ]; }
     T dh()       const { return (*this)[ dH ]; }
+    T di()       const { return (*this)[ dI ]; }
     
     T& dx()      { return (*this)[ dX ]; }
     T& dy()      { return (*this)[ dY ]; }
@@ -90,6 +97,7 @@ public:
     T& dl()      { return (*this)[ dL ]; }
     T& dw()      { return (*this)[ dW ]; }
     T& dh()      { return (*this)[ dH ]; }
+    T& di()      { return (*this)[ dI ]; }
 };
 
 /**
@@ -137,6 +145,7 @@ public:
         x_.length() = x.length() + u.dl();
         x_.width() = x.width() + u.dw();
         x_.height() = x.height() + u.dh();
+        x_.intensity() = x.intensity() + u.di();
         
         // Return transitioned state vector
         return x_;
