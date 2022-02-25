@@ -34,18 +34,22 @@ typedef LidarTarget::OrientationMeasurementModel<T> OrientationModel;
 int main(int argc, char** argv)
 {
     // Simulated (true) system state
+    // 目标进场时的状态(X, Y, Z, L, W, H, I)
     State x;
     x.setZero();
     
     // Control input
+    // 控制量在进场时才应该是0
     Control u;
+    u.setZero();
     // System
+    // 系统是整个场景一个系统
     SystemModel sys;
     
     // Measurement models
     // Set position landmarks at (-10, -10) and (30, 75)
     PositionModel pm(-10, -10, 30, 75);
-    OrientationModel om;
+    // OrientationModel om; 没有方位模型
     
     // Random number generation (for noise simulation)
     std::default_random_engine generator;
@@ -93,23 +97,9 @@ int main(int argc, char** argv)
         auto x_ekf = ekf.predict(sys, u);
         auto x_ukf = ukf.predict(sys, u);
         
-        // Orientation measurement
-        {
-            // We can measure the orientation every 5th step
-            OrientationMeasurement orientation = om.h(x);
-            
-            // Measurement is affected by noise as well
-            orientation.theta() += orientationNoise * noise(generator);
-            
-            // Update EKF
-            x_ekf = ekf.update(om, orientation);
-            
-            // Update UKF
-            x_ukf = ukf.update(om, orientation);
-        }
-        
         // Position measurement
         {
+            // Lidar结果就是观测状态，它和目标状态对应的，不需要做进一步转换
             // We can measure the position every 10th step
             PositionMeasurement position = pm.h(x);
             
