@@ -58,15 +58,15 @@ int main(int argc, char** argv)
     
     // Some filters for estimation
     // Pure predictor without measurement updates
-    Kalman::ExtendedKalmanFilter<State> predictor;
+    // Kalman::ExtendedKalmanFilter<State> predictor;  不会使用
     // Extended Kalman Filter
-    Kalman::ExtendedKalmanFilter<State> ekf;
+    // Kalman::ExtendedKalmanFilter<State> ekf;
     // Unscented Kalman Filter
     Kalman::UnscentedKalmanFilter<State> ukf(1);
     
     // Init filters with true system state
-    predictor.init(x);
-    ekf.init(x);
+    // predictor.init(x);
+    // ekf.init(x);
     ukf.init(x);
     
     // Standard-Deviation of noise added to all state vector components during state transition
@@ -88,19 +88,22 @@ int main(int argc, char** argv)
         x = sys.f(x, u);
         
         // Add noise: Our robot move is affected by noise (due to actuator failures)
+        // 已经是下一帧的状态了
         x.x() += systemNoise*noise(generator);
         x.y() += systemNoise*noise(generator);
         x.theta() += systemNoise*noise(generator);
         
         // Predict state for current time-step using the filters
-        auto x_pred = predictor.predict(sys, u);
-        auto x_ekf = ekf.predict(sys, u);
-        auto x_ukf = ukf.predict(sys, u);
+        // auto x_pred = predictor.predict(sys, u);
+        // auto x_ekf = ekf.predict(sys, u);
+        auto x_ukf = ukf.predict(sys, u); //预测了下一帧的状态
         
         // Position measurement
         {
             // Lidar结果就是观测状态，它和目标状态对应的，不需要做进一步转换
             // We can measure the position every 10th step
+            // 下一帧的状态转换成观测状态
+            // Lidar数据直接转成观测状态，h()还是需要将目标状态转换成观测状态（内部使用）
             PositionMeasurement position = pm.h(x);
             
             // Measurement is affected by noise as well
@@ -108,9 +111,10 @@ int main(int argc, char** argv)
             position.d2() += distanceNoise * noise(generator);
             
             // Update EKF
-            x_ekf = ekf.update(pm, position);
+            // x_ekf = ekf.update(pm, position);
             
             // Update UKF
+            // 观测状态对照的是预测后的状态了
             x_ukf = ukf.update(pm, position);
         }
         
