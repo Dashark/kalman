@@ -33,6 +33,18 @@ struct SIn {    // 输入的目标点云
     PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
 
+using namespace KalmanTracking;
+
+typedef float T;
+
+// Some type shortcuts
+typedef LidarTarget::State<T> State;
+typedef LidarTarget::Control<T> Control;
+typedef LidarTarget::SystemModel<T> SystemModel;
+
+typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
+typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
+
 bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
 {
     SIn* pIn = (SIn*)(in.data());
@@ -66,4 +78,43 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
     // 对matching做Kalman预测与更新
     // 对left做Kalman预测
     // 对right做新建目标
+    State x;
+    x << prev.width...;
+    // Control input
+    // 控制量在进场时才应该是0
+    Control u;
+    u.setZero();
+    // System
+    // 系统是整个场景一个系统
+    SystemModel sys;
+    
+    // Measurement models
+    // Set position landmarks at (-10, -10) and (30, 75)
+    PositionModel pm(-10, -10, 30, 75);
+    // OrientationModel om; 没有方位模型
+    Kalman::UnscentedKalmanFilter<State> ukf(1);
+    ukf.init(x);
+    // Predict state for current time-step using the filters
+    // auto x_pred = predictor.predict(sys, u);
+    // auto x_ekf = ekf.predict(sys, u);
+    auto x_ukf = ukf.predict(sys, u); //预测了下一帧的状态
+        // Position measurement
+        {
+            // Lidar结果就是观测状态，它和目标状态对应的，不需要做进一步转换
+            // We can measure the position every 10th step
+            // 下一帧的状态转换成观测状态
+            // Lidar数据直接转成观测状态，h()还是需要将目标状态转换成观测状态（内部使用）
+            PositionMeasurement position = pm.h(x);
+            
+            // Measurement is affected by noise as well
+            position.d1() += distanceNoise * noise(generator);
+            position.d2() += distanceNoise * noise(generator);
+            
+            // Update EKF
+            // x_ekf = ekf.update(pm, position);
+            
+            // Update UKF
+            // 观测状态对照的是预测后的状态了
+            x_ukf = ukf.update(pm, position);
+        }
 }
