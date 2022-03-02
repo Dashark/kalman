@@ -11,6 +11,7 @@ typedef struct {
 //目标检测结果数据
 typedef struct {
     uint index;             // 目标临时编号
+    float intensity;        // 目标激光强度总和
     float width;            // 精度：0.01m
     float length;           // 精度：0.01m
     float height;           // 精度：0.01m
@@ -49,21 +50,26 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
 {
     SIn* pIn = (SIn*)(in.data());
     std::set<PV_OBJ_DATA> inSet;
-    for (int i = 0; i < pIn->m_obj_num; i++) {
-        // 加入Set并按照index排序
-        inSet.add(pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
-    }
+    // 加入Set并按照index排序
+    inSet.insert(pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
     std::set<PV_OBJ_DATA> prevSet;
     // 当前目标 pIn 与上一次目标 pPrev 匹配关系
     std::vector<WeightedBipartiteEdge> edges;
     for (auto &prev : prevSet) {
-        Kalman::Vector<float, 9> prevTarget;
-        prevTarget << prev.width, prev.length, prev.height, prev.x_pos, prev.y_pos;
+        Kalman::Vector<float, 10> prevTarget;
+        prevTarget << prev.width, prev.length, prev.height,
+                      prev.x_pos, prev.y_pos, prev.z_pos,
+                      prev.x_speed, prev.y_speed, prev.z_speed,
+                      prev.intensity;
         for (auto &next : inSet) {
             Kalman::Vector<float, 9> nextTarget;
-            nextTarget << next.width;
+            nextTarget << next.width, next.length, next.height,
+                          next.x_pos, next.y_pos, next.z_pos,
+                          next.x_speed, next.y_speed, next.z_speed,
+                          next.intensity;
             Kalman::Vector<float, 9> delta = nextTarget - prevTarget;
-            float d1 = std::sqrt( delta.dot(delta) );
+            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+            // 构造所有边的权重
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
     }
