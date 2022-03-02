@@ -26,10 +26,10 @@ static const int UNMATCHED = -1;
 
 struct LeftEdge {
     int right;
-    int cost;
+    float cost;
 
     LeftEdge() : right(), cost() {}
-    LeftEdge(int right, int cost) : right(right), cost(cost) {}
+    LeftEdge(int right, float cost) : right(right), cost(cost) {}
 
     const bool operator < (const LeftEdge& otherEdge) const {
         return right < otherEdge.right || (right == otherEdge.right && cost < otherEdge.cost);
@@ -107,7 +107,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     // These hold "potentials" for nodes on the left and nodes on the right, which reduce the costs of attached edges.
     // We maintain that every reduced cost, cost[i][j] - leftPotential[i] - leftPotential[j], is greater than zero.
-    int leftPotential[n], rightPotential[n];
+    float leftPotential[n], rightPotential[n];
 
     //region Node potential initialization
 
@@ -119,7 +119,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     fo(i, n) {
         const std::vector<LeftEdge>& edges = leftEdges[i];
-        int smallestEdgeCost = edges[0].cost;
+        float smallestEdgeCost = edges[0].cost;
         range(edgeIndex, 1, edges.size()) {
             if (edges[edgeIndex].cost < smallestEdgeCost) {
                 smallestEdgeCost = edges[edgeIndex].cost;
@@ -140,7 +140,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     fo(edgeIndex, allEdges.size()) {
         const WeightedBipartiteEdge& edge = allEdges[edgeIndex];
-        int reducedCost = edge.cost - leftPotential[edge.left];
+        float reducedCost = edge.cost - leftPotential[edge.left];
         if (rightPotential[edge.right] > reducedCost) {
             rightPotential[edge.right] = reducedCost;
         }
@@ -164,7 +164,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
         int tightEdgeCount = 0;
         fo(edgeIndex, edges.size()) {
             const LeftEdge& edge = edges[edgeIndex];
-            int reducedCost = edge.cost - leftPotential[i] - rightPotential[edge.right];
+            float reducedCost = edge.cost - leftPotential[i] - rightPotential[edge.right];
             if (reducedCost == 0) {
                 if (edgeIndex != tightEdgeCount) {
                     std::swap(edges[tightEdgeCount], edges[edgeIndex]);
@@ -339,7 +339,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
                         if (rightMatchedTo[j] == UNMATCHED || !leftSeen[rightMatchedTo[j]]) {
                             // This edge is to a node on the right that we haven't reached yet.
 
-                            int reducedCost = edge.cost - potential - rightPotential[j];
+                            float reducedCost = edge.cost - potential - rightPotential[j];
                             assert(reducedCost >= 0);
 
                             if (reducedCost < rightMinimumSlack[j]) {
