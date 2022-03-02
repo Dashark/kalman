@@ -46,6 +46,14 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
+struct searchEdge {
+    uint left, right;
+    searchEdge(uint l, uint r) {left = l; right = r;}
+    bool operator() (WeightedBipartiteEdge &edge) {
+        return (edge.left == left && edge.right == right);
+    }
+}
+
 bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
 {
     SIn* pIn = (SIn*)(in.data());
@@ -62,23 +70,31 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
                       prev.x_speed, prev.y_speed, prev.z_speed,
                       prev.intensity;
         for (auto &next : inSet) {
-            Kalman::Vector<float, 9> nextTarget;
+            Kalman::Vector<float, 10> nextTarget;
             nextTarget << next.width, next.length, next.height,
                           next.x_pos, next.y_pos, next.z_pos,
                           next.x_speed, next.y_speed, next.z_speed,
                           next.intensity;
-            Kalman::Vector<float, 9> delta = nextTarget - prevTarget;
+            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
             // 构造所有边的权重
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
     }
-    std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
+    std::vector<uint> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
-    for (int &id : matching) {
-        d 
+    uint i = 0;
+    for (uint &id : matching) {
+        std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
+        if (it != edges.end() ) {
+            // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
+            if (it->cost < threshold) {
+                left.insert(it->left);
+                right.insert(it->right);
+            }
+        }
     }
     // 处理完成得到3个集合，left, right, 和上面的matching
     // 对matching做Kalman预测与更新
