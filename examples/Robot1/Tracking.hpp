@@ -46,9 +46,22 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
+struct KalmanObj
+{
+    KalmanObj():ukf(1) {
+        predict_num = 0;
+        x.setZero();
+        u.setZero();
+    }
+    int predict_num;
+    State x;
+    Control u;
+    Kalman::UnscentedKalmanFilter<State> ukf(1);
+};
+
 struct searchEdge {
-    uint left, right;
-    searchEdge(uint l, uint r) {left = l; right = r;}
+    int left, right;
+    searchEdge(int l, int r) {left = l; right = r;}
     bool operator() (WeightedBipartiteEdge &edge) {
         return (edge.left == left && edge.right == right);
     }
@@ -81,25 +94,52 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
     }
-    std::vector<uint> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
+    std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
-    uint i = 0;
-    for (uint &id : matching) {
+    int i = 0;
+    float threshold = 0.0f; // 多少合适呢？
+    std::vector<int> left_match, left_unmatch, right_match, right_unmatch;
+    std::vector<std::pair<int, int>> lr_match;
+    for (int &id : matching) {
         std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
         if (it != edges.end() ) {
             // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
             if (it->cost < threshold) {
-                left.insert(it->left);
-                right.insert(it->right);
+                lr_match.insert(std::make_pair(it->left, it->right));
             }
+            else {
+                left_unmatch.push_pack(it->left);
+                right_unmatch.push_back(it->right);
+            }
+            // 这儿match和unmatch有可能掉了成员
         }
+        i += 1;
     }
+    std::map<int, KalmanObj> kalman_map;
     // 处理完成得到3个集合，left, right, 和上面的matching
     // 对matching做Kalman预测与更新
+    for (std::pair &pa : lr_match) {
+        KalmanObj &obj = kalman_map.find(pa.first);
+        obj.x = obj.ukf.predict(sys, obj.u);
+        PV_OBJ_DATA pvData = inSet.find(pa.second);  //新输入点云数据
+        // 转换观测状态
+        PositionMeasurement px = convert(pvData);
+        obj.x = obj.ukf.update(pm, px);
+        // TODO 返回上层结果
+    }
     // 对left做Kalman预测
+    for (int &id : left_unmatch) {
+        KalmanObj &obj = kalman_map.find(pa.first);
+        obj.x = obj.ukf.predict(sys, obj.u);
+        obj.predict_num += 1;
+        // TODO 返回上层结果
+    }
     // 对right做新建目标
+    for (int &id : right_unmatch) {
+        kalman_map.insert(std::make_pair(id, KalmanObj));
+    }
     State x;
     x << prev.width...;
     // Control input
