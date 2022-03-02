@@ -112,11 +112,13 @@ int main(int argc, char** argv)
         }
         
         // Print to stdout as csv format
+        /*
         std::cout   << x.x() << "," << x.y() << "," << x.theta() << ","
                     << x_pred.x() << "," << x_pred.y() << "," << x_pred.theta()  << ","
                     << x_ekf.x() << "," << x_ekf.y() << "," << x_ekf.theta()  << ","
                     << x_ukf.x() << "," << x_ukf.y() << "," << x_ukf.theta()
                     << std::endl;
+        */
     }
     
     return 0;
