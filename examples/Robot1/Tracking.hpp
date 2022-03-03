@@ -146,9 +146,9 @@ public:
             else
                 assert(false);
         }*/
-        for (std::pair &pid : lr_match) {
-            std::vector<PV_OBJ_DATA>::iterator itl = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV);
-            std::vector<PV_OBJ_DATA>::iterator itr = std::find_if(in.begin(), in.end(), searchPV);
+        for (std::pair<int, int> &pid : lr_match) {
+            std::vector<PV_OBJ_DATA>::iterator itl = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV(pid.first));
+            std::vector<PV_OBJ_DATA>::iterator itr = std::find_if(in.begin(), in.end(), searchPV(pid.second));
             if (itr != in.end() && itl != prevTargets_.end()) {
                 itr->index = itl->index;
                 temp.push_back(*itr);
@@ -170,10 +170,17 @@ private:
     struct copyID {
         copyID(const std::vector<int> &ids):ids_(ids) {}
         bool operator() (const PV_OBJ_DATA &data) {
-            std::find(ids_.begin(), ids_.end(), data.index);
+            return ids_.end() != std::find(ids_.begin(), ids_.end(), data.index);
         }
         std::vector<int> ids_;
     };
+    struct searchPV {
+        searchPV(int id):id_(id) {}
+        bool operator() (const PV_OBJ_DATA &data) {
+            return data.index == id_;
+        }
+        int id_;
+    }
 };
 /**
  * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
