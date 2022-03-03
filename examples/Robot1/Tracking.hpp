@@ -42,6 +42,16 @@ struct SIn {    // 输入的目标点云
     PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
 
+typedef float T;
+
+// Some type shortcuts
+typedef LidarTarget::State<T> State;
+typedef LidarTarget::Control<T> Control;
+typedef LidarTarget::SystemModel<T> SystemModel;
+
+typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
+typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
+
 /**
  * @brief 基于Lidar的跟踪。
  * 两帧点云按照特征距离建立先后关系
@@ -50,9 +60,11 @@ struct SIn {    // 输入的目标点云
  */
 class LidarTracking {
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {}
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {
+        threshold_ = 1.0f;
+    }
     /**
-     * @brief 二分图算法匹配，第三方算法
+     * @brief 二分图算法匹配，第三方算法。同时承担Kalman的工厂
      * 
      * @param in 当前帧的点云目标
      * @return LidarTracking 新对象包含所有的点云目标
@@ -63,13 +75,12 @@ public:
         std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevTargets_.size(), edges);
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
     int i = 0;
-    float threshold = 0.0f; // 多少合适呢？
     std::vector<std::pair<int, int>> lr_match;
     for (int &id : matching) {
         std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
         if (it != edges.end() ) {
             // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
-            if (it->cost < threshold) {
+            if (it->cost < threshold_) {
                 lr_match.push_back(std::make_pair(it->left, it->right));
             }
             else {
@@ -81,6 +92,9 @@ public:
         i += 1;
     }
         std::vector<PV_OBJ_DATA> temp;
+        std::copy_if(prevTargets_.begin(), prevTargets_.end(), std::back_inserter(temp), copyID(left_unmatch_) );
+        std::copy_if(in.begin(), in.end(), std::back_inserter(temp), copyID(right_unmatch_) );
+        /*
         for (int &id : left_unmatch_) {
             std::vector<PV_OBJ_DATA>::iterator it = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV);
             if (it != prevTargets_.end() ) {
@@ -96,8 +110,18 @@ public:
             }
             else
                 assert(false);
+        }*/
+        for (std::pair &pid : lr_match) {
+            std::vector<PV_OBJ_DATA>::iterator itl = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV);
+            std::vector<PV_OBJ_DATA>::iterator itr = std::find_if(in.begin(), in.end(), searchPV);
+            if (itr != in.end() && itl != prevTargets_.end()) {
+                itr->index = itl->index;
+                temp.push_back(*itr);
+            }
+            else
+                assert(false);
         }
-        for (std::pair &pid : lr_match)
+        return LidarTracking(temp);
     }
     std::vector<int> getMatching() const { return matching_; }
     std::vector<int> getLosting() const { return left_unmatch_; }
@@ -105,54 +129,50 @@ public:
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
     std::vector<int> matching_, left_unmatch_, right_unmatch_;
+    float threshold_;
+
+private:
+    struct copyID {
+        copyID(const std::vector<int> &ids):ids_(ids) {}
+        bool operator() (const PV_OBJ_DATA &data) {
+            std::find(ids_.begin(), ids_.end(), data.index);
+        }
+        std::vector<int> ids_;
+    }
 };
 /**
  * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
  * Kalman是预测和修正后的结果，与Lidar观测还不是一个东西
  * 
  */
-class TrackingApp {
+class KalmanObject {
 public:
-    TrackingApp() {}
-    bool bipartite() {} // 二分图匹配
-    bool predict() {}   //所有目标可以先行预测
-    bool update() {
-        观测对象的bipartite();
+    KalmanObject():ukf(1) {
+        predict_num = 0;
+        x.setZero();
+        u.setZero();
     }
-    bool kalmanObj() {}
+    bool predict() {   //所有目标可以先行预测
+        predict_num += 1;
+        x = ukf.predict(sys, u);
+    }
+    bool update() {
+        predict_num = 0;
+        x = ukf.update();
+    }
 private:
-private:
+    int predict_num;
+    State x;
+    Control u;
+    Kalman::UnscentedKalmanFilter<State> ukf;
     // Kalman只是概念对象，映射到实际目标
     // 通过ID号
-    std::map<int, KalmanObj> kalman_map;  //Kalman对象集合
     // System
     // 系统是整个场景一个系统
     SystemModel sys;
     // Measurement models
     // Set position landmarks at (-10, -10) and (30, 75)
     PositionModel pm(-10, -10, 30, 75);
-};
-typedef float T;
-
-// Some type shortcuts
-typedef LidarTarget::State<T> State;
-typedef LidarTarget::Control<T> Control;
-typedef LidarTarget::SystemModel<T> SystemModel;
-
-typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
-typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
-
-struct KalmanObj
-{
-    KalmanObj():ukf(1) {
-        predict_num = 0;
-        x.setZero();
-        u.setZero();
-    }
-    int predict_num;
-    State x;
-    Control u;
-    Kalman::UnscentedKalmanFilter<State> ukf;
 };
 
 struct searchEdge {

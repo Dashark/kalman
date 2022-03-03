@@ -32,10 +32,12 @@ typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 int main(int argc, char** argv)
 {
     //一些数据结构转换
-    TrackingApp app(first cloud);
-    app.predict();  // 所有对象都预测一次
-    app.update(current cloud);
-    app.getNewCloud();
+    LidarTracking lidarT(first cloud);
+    LidarTracking lidarNew = lidarT.bipartite(second cloud);
+    std::vector<PV_OBJ_DATA> news = lidarT.getMatch();
+    std::vector<PV_OBJ_DATA> losts = lidarT.getLosting();
+    std::vector<int> appears = lidarT.getAppears();
+    std::vector<PV_OBJ_DATA> appears = lidarT.newKalmanObj();
     //返回点云数据结构
     // Simulated (true) system state
     // 目标进场时的状态(X, Y, Z, L, W, H, I)
