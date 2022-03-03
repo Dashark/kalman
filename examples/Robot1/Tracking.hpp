@@ -3,6 +3,9 @@
 
 #include <set>
 #include <vector>
+
+#include "SystemModel.hpp"
+#include "PositionMeasurementModel.hpp"
 #include <kalman/UnscentedKalmanFilter.hpp>
 
 #include "BipartiteHungarian.h"
@@ -51,6 +54,38 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
+
+struct searchEdge {
+    int left, right;
+    searchEdge(int l, int r) {left = l; right = r;}
+    bool operator() (WeightedBipartiteEdge &edge) {
+        return (edge.left == left && edge.right == right);
+    }
+};
+
+Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
+    Kalman::Vector<float, 10> target;
+    target << data.width, data.length, data.height,
+              data.x_pos, data.y_pos, data.z_pos,
+              data.x_speed, data.y_speed, data.z_speed,
+              data.intensity;
+    return target;
+}
+std::vector<WeightedBipartiteEdge> createEdges(std::vector<PV_OBJ_DATA> prevSet, std::vector<PV_OBJ_DATA> nextSet) {
+    // 当前目标 next 与上一次目标 prev 匹配关系
+    std::vector<WeightedBipartiteEdge> edges;
+    for (auto &prev : prevSet) {
+        Kalman::Vector<float, 10> prevTarget = targetVector(prev);
+        for (auto &next : nextSet) {
+            Kalman::Vector<float, 10> nextTarget = targetVector(next);
+            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
+            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+            // 构造所有边的权重
+            edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
+        }
+    }
+    return edges;
+}
 
 /**
  * @brief 基于Lidar的跟踪。
@@ -138,7 +173,7 @@ private:
             std::find(ids_.begin(), ids_.end(), data.index);
         }
         std::vector<int> ids_;
-    }
+    };
 };
 /**
  * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
@@ -175,37 +210,6 @@ private:
     PositionModel pm(-10, -10, 30, 75);
 };
 
-struct searchEdge {
-    int left, right;
-    searchEdge(int l, int r) {left = l; right = r;}
-    bool operator() (WeightedBipartiteEdge &edge) {
-        return (edge.left == left && edge.right == right);
-    }
-};
-
-Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
-    Kalman::Vector<float, 10> target;
-    target << data.width, data.length, data.height,
-              data.x_pos, data.y_pos, data.z_pos,
-              data.x_speed, data.y_speed, data.z_speed,
-              data.intensity;
-    return target;
-}
-std::vector<WeightedBipartiteEdge> createEdges(std::vector<PV_OBJ_DATA> prevSet, std::vector<PV_OBJ_DATA> nextSet) {
-    // 当前目标 next 与上一次目标 prev 匹配关系
-    std::vector<WeightedBipartiteEdge> edges;
-    for (auto &prev : prevSet) {
-        Kalman::Vector<float, 10> prevTarget = targetVector(prev);
-        for (auto &next : nextSet) {
-            Kalman::Vector<float, 10> nextTarget = targetVector(next);
-            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
-            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-            // 构造所有边的权重
-            edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
-        }
-    }
-    return edges;
-}
 
 bool ProcessData() //const QByteArray &in, QByteArray &out)
 {
