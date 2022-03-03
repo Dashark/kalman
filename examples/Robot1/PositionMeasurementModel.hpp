@@ -17,7 +17,7 @@ template<typename T>
 class PositionMeasurement : public Kalman::Vector<T, 7>
 {
 public:
-    KALMAN_VECTOR(State, T, 7)
+    KALMAN_VECTOR(PositionMeasurement, T, 7)
     
     //! X-position
     static constexpr size_t X = 0;
