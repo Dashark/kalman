@@ -42,8 +42,96 @@ struct SIn {    // 输入的目标点云
     PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
 
-using namespace KalmanTracking;
-
+/**
+ * @brief 基于Lidar的跟踪。
+ * 两帧点云按照特征距离建立先后关系
+ * 点云目标的ID逻辑也在其中
+ * 
+ */
+class LidarTracking {
+public:
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {}
+    /**
+     * @brief 二分图算法匹配，第三方算法
+     * 
+     * @param in 当前帧的点云目标
+     * @return LidarTracking 新对象包含所有的点云目标
+     * 匹配后产生新对象，同时不破坏老对象
+     */
+    LidarTracking bipartite(const std::vector<PV_OBJ_DATA> &in) {
+        std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
+        std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevTargets_.size(), edges);
+    // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
+    int i = 0;
+    float threshold = 0.0f; // 多少合适呢？
+    std::vector<std::pair<int, int>> lr_match;
+    for (int &id : matching) {
+        std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
+        if (it != edges.end() ) {
+            // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
+            if (it->cost < threshold) {
+                lr_match.push_back(std::make_pair(it->left, it->right));
+            }
+            else {
+                left_unmatch_.push_back(it->left);
+                right_unmatch_.push_back(it->right);
+            }
+            // 这儿match和unmatch有可能掉了成员
+        }
+        i += 1;
+    }
+        std::vector<PV_OBJ_DATA> temp;
+        for (int &id : left_unmatch_) {
+            std::vector<PV_OBJ_DATA>::iterator it = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV);
+            if (it != prevTargets_.end() ) {
+                temp.push_back(*it);
+            }
+            else
+                assert(false);
+        }
+        for (int &id : right_unmatch_) {
+            std::vector<PV_OBJ_DATA>::iterator it = std::find_if(in.begin(), in.end(), searchPV);
+            if (it != in.end() ) {
+                temp.push_back(*it);
+            }
+            else
+                assert(false);
+        }
+        for (std::pair &pid : lr_match)
+    }
+    std::vector<int> getMatching() const { return matching_; }
+    std::vector<int> getLosting() const { return left_unmatch_; }
+    std::vector<int> getAppears() const { return right_unmatch_; }
+private:
+    std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
+    std::vector<int> matching_, left_unmatch_, right_unmatch_;
+};
+/**
+ * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
+ * Kalman是预测和修正后的结果，与Lidar观测还不是一个东西
+ * 
+ */
+class TrackingApp {
+public:
+    TrackingApp() {}
+    bool bipartite() {} // 二分图匹配
+    bool predict() {}   //所有目标可以先行预测
+    bool update() {
+        观测对象的bipartite();
+    }
+    bool kalmanObj() {}
+private:
+private:
+    // Kalman只是概念对象，映射到实际目标
+    // 通过ID号
+    std::map<int, KalmanObj> kalman_map;  //Kalman对象集合
+    // System
+    // 系统是整个场景一个系统
+    SystemModel sys;
+    // Measurement models
+    // Set position landmarks at (-10, -10) and (30, 75)
+    PositionModel pm(-10, -10, 30, 75);
+};
 typedef float T;
 
 // Some type shortcuts
@@ -105,31 +193,9 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
     std::vector<PV_OBJ_DATA> inSet;
     // 加入Set并按照index排序
     inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
-    std::vector<PV_OBJ_DATA> prevSet;
-    std::vector<WeightedBipartiteEdge> edges = createEdges(prevSet, inSet);
-    std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevSet.size(), edges);
+    inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
-    // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
-    int i = 0;
-    float threshold = 0.0f; // 多少合适呢？
-    std::vector<int> left_match, left_unmatch, right_match, right_unmatch;
-    std::vector<std::pair<int, int>> lr_match;
-    for (int &id : matching) {
-        std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
-        if (it != edges.end() ) {
-            // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
-            if (it->cost < threshold) {
-                lr_match.push_back(std::make_pair(it->left, it->right));
-            }
-            else {
-                left_unmatch.push_back(it->left);
-                right_unmatch.push_back(it->right);
-            }
-            // 这儿match和unmatch有可能掉了成员
-        }
-        i += 1;
-    }
     /*
     std::map<int, KalmanObj> kalman_map;
     // 处理完成得到3个集合，left, right, 和上面的matching
@@ -160,13 +226,7 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
     // 控制量在进场时才应该是0
     Control u;
     u.setZero();
-    // System
-    // 系统是整个场景一个系统
-    SystemModel sys;
     
-    // Measurement models
-    // Set position landmarks at (-10, -10) and (30, 75)
-    PositionModel pm(-10, -10, 30, 75);
     // OrientationModel om; 没有方位模型
     Kalman::UnscentedKalmanFilter<State> ukf(1);
     ukf.init(x);
