@@ -1,6 +1,11 @@
+#ifndef KALMAN_TRACKING_LIDAR_HPP_
+#define KALMAN_TRACKING_LIDAR_HPP_
+
 #include <set>
 #include <kalman/Types.hpp>
 
+namespace KalmanTracking
+{
 typedef struct {
     float x;        //精度 10微米
     float y;        //精度 10微米
@@ -67,6 +72,29 @@ struct searchEdge {
     }
 }
 
+Kalman::Vector<float, 10> targetVector(PV_OBJ_DATA &data) {
+    Kalman::Vector<float, 10> target;
+    target << data.width, data.length, data.height,
+              data.x_pos, data.y_pos, data.z_pos,
+              data.x_speed, data.y_speed, data.z_speed,
+              data.intensity;
+    return target;
+}
+std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prev, std::set<PV_OBJ_DATA> next) {
+    // 当前目标 next 与上一次目标 prev 匹配关系
+    std::vector<WeightedBipartiteEdge> edges;
+    for (auto &prev : prevSet) {
+        Kalman::Vector<float, 10> prevTarget = targetVector(prev);
+        for (auto &next : inSet) {
+            Kalman::Vector<float, 10> nextTarget = targetVector(next);
+            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
+            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+            // 构造所有边的权重
+            edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
+        }
+    }
+}
+
 bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
 {
     SIn* pIn = (SIn*)(in.data());
@@ -74,26 +102,6 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
     // 加入Set并按照index排序
     inSet.insert(pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
     std::set<PV_OBJ_DATA> prevSet;
-    // 当前目标 pIn 与上一次目标 pPrev 匹配关系
-    std::vector<WeightedBipartiteEdge> edges;
-    for (auto &prev : prevSet) {
-        Kalman::Vector<float, 10> prevTarget;
-        prevTarget << prev.width, prev.length, prev.height,
-                      prev.x_pos, prev.y_pos, prev.z_pos,
-                      prev.x_speed, prev.y_speed, prev.z_speed,
-                      prev.intensity;
-        for (auto &next : inSet) {
-            Kalman::Vector<float, 10> nextTarget;
-            nextTarget << next.width, next.length, next.height,
-                          next.x_pos, next.y_pos, next.z_pos,
-                          next.x_speed, next.y_speed, next.z_speed,
-                          next.intensity;
-            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
-            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-            // 构造所有边的权重
-            edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
-        }
-    }
     std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
@@ -180,3 +188,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
             x_ukf = ukf.update(pm, position);
         }
 }
+
+} // namespace KalmanTracking
+
+#endif
