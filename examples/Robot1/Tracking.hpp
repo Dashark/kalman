@@ -105,7 +105,7 @@ public:
      * @return LidarTracking 新对象包含所有的点云目标
      * 匹配后产生新对象，同时不破坏老对象
      */
-    LidarTracking bipartite(const std::vector<PV_OBJ_DATA> &in) {
+    LidarTracking bipartite(std::vector<PV_OBJ_DATA> &in) {
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevTargets_.size(), edges);
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
@@ -180,7 +180,7 @@ private:
             return data.index == id_;
         }
         int id_;
-    }
+    };
 };
 /**
  * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
@@ -214,9 +214,10 @@ private:
     SystemModel sys;
     // Measurement models
     // Set position landmarks at (-10, -10) and (30, 75)
-    PositionModel pm(-10, -10, 30, 75);
+    PositionModel pm;
 };
 
+    /*
 
 bool ProcessData() //const QByteArray &in, QByteArray &out)
 {
@@ -227,7 +228,6 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
     inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
-    /*
     std::map<int, KalmanObj> kalman_map;
     // 处理完成得到3个集合，left, right, 和上面的matching
     // 对matching做Kalman预测与更新
@@ -284,9 +284,8 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
             // 观测状态对照的是预测后的状态了
             x_ukf = ukf.update(pm, position);
         }
-*/
 	return true;
-}
+}*/
 
 } // namespace KalmanTracking
 
