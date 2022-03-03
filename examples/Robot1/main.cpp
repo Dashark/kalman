@@ -80,7 +80,7 @@ int main(int argc, char** argv)
     T systemNoise = 0.1;
     // Standard-Deviation of noise added to all measurement vector components in orientation measurements
     // Standard-Deviation of noise added to all measurement vector components in distance measurements
-    T distanceNoise = 0.25;
+    //T distanceNoise = 0.25;
     
     // Simulate for 100 steps
     const size_t N = 100;

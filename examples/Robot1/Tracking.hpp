@@ -197,10 +197,12 @@ public:
     bool predict() {   //所有目标可以先行预测
         predict_num += 1;
         x = ukf.predict(sys, u);
+        return true;
     }
-    bool update() {
+    bool update(PositionMeasurement &me) {
         predict_num = 0;
-        x = ukf.update();
+        x = ukf.update(pm, me);
+        return true;
     }
 private:
     int predict_num;
