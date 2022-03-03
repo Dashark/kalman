@@ -31,12 +31,14 @@ typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 int main(int argc, char** argv)
 {
     //一些数据结构转换
+    /*
     LidarTracking lidarT(first cloud);
     LidarTracking lidarNew = lidarT.bipartite(second cloud);
     std::vector<PV_OBJ_DATA> news = lidarT.getMatch();
     std::vector<PV_OBJ_DATA> losts = lidarT.getLosting();
     std::vector<int> appears = lidarT.getAppears();
     std::vector<PV_OBJ_DATA> appears = lidarT.newKalmanObj();
+    */
     //返回点云数据结构
     // Simulated (true) system state
     // 目标进场时的状态(X, Y, Z, L, W, H, I)
@@ -53,7 +55,7 @@ int main(int argc, char** argv)
     
     // Measurement models
     // Set position landmarks at (-10, -10) and (30, 75)
-    PositionModel pm(-10, -10, 30, 75);
+    PositionModel pm;
     // OrientationModel om; 没有方位模型
     
     // Random number generation (for noise simulation)
@@ -107,8 +109,8 @@ int main(int argc, char** argv)
             PositionMeasurement position = pm.h(x);
             
             // Measurement is affected by noise as well
-            position.d1() += distanceNoise * noise(generator);
-            position.d2() += distanceNoise * noise(generator);
+            //position.d1() += distanceNoise * noise(generator);
+            //position.d2() += distanceNoise * noise(generator);
             
             // Update EKF
             // x_ekf = ekf.update(pm, position);
