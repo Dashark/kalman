@@ -83,7 +83,7 @@ Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
               data.intensity;
     return target;
 }
-std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prevSet, std::set<PV_OBJ_DATA> nextSet) {
+std::vector<WeightedBipartiteEdge> createEdges(std::vector<PV_OBJ_DATA> prevSet, std::vector<PV_OBJ_DATA> nextSet) {
     // 当前目标 next 与上一次目标 prev 匹配关系
     std::vector<WeightedBipartiteEdge> edges;
     for (auto &prev : prevSet) {
@@ -102,13 +102,12 @@ std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prevSet, st
 bool ProcessData() //const QByteArray &in, QByteArray &out)
 {
     SIn* pIn; // = (SIn*)(in.data());
-    std::set<PV_OBJ_DATA> inSet;
+    std::vector<PV_OBJ_DATA> inSet;
     // 加入Set并按照index排序
-    inSet.insert(pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
-    std::set<PV_OBJ_DATA> prevSet;
+    inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
+    std::vector<PV_OBJ_DATA> prevSet;
     std::vector<WeightedBipartiteEdge> edges = createEdges(prevSet, inSet);
     std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevSet.size(), edges);
-    /*
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
@@ -121,16 +120,17 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
         if (it != edges.end() ) {
             // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
             if (it->cost < threshold) {
-                lr_match.insert(std::make_pair(it->left, it->right));
+                lr_match.push_back(std::make_pair(it->left, it->right));
             }
             else {
-                left_unmatch.push_pack(it->left);
+                left_unmatch.push_back(it->left);
                 right_unmatch.push_back(it->right);
             }
             // 这儿match和unmatch有可能掉了成员
         }
         i += 1;
     }
+    /*
     std::map<int, KalmanObj> kalman_map;
     // 处理完成得到3个集合，left, right, 和上面的matching
     // 对matching做Kalman预测与更新
