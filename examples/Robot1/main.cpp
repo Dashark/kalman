@@ -27,9 +27,7 @@ typedef LidarTarget::Control<T> Control;
 typedef LidarTarget::SystemModel<T> SystemModel;
 
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
-typedef LidarTarget::OrientationMeasurement<T> OrientationMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
-typedef LidarTarget::OrientationMeasurementModel<T> OrientationModel;
 
 int main(int argc, char** argv)
 {
@@ -72,7 +70,6 @@ int main(int argc, char** argv)
     // Standard-Deviation of noise added to all state vector components during state transition
     T systemNoise = 0.1;
     // Standard-Deviation of noise added to all measurement vector components in orientation measurements
-    T orientationNoise = 0.025;
     // Standard-Deviation of noise added to all measurement vector components in distance measurements
     T distanceNoise = 0.25;
     
@@ -80,9 +77,6 @@ int main(int argc, char** argv)
     const size_t N = 100;
     for(size_t i = 1; i <= N; i++)
     {
-        // Generate some control input
-        u.v() = 1. + std::sin( T(2) * T(M_PI) / T(N) );
-        u.dtheta() = std::sin( T(2) * T(M_PI) / T(N) ) * (1 - 2*(i > 50));
         
         // Simulate system
         x = sys.f(x, u);
@@ -91,7 +85,6 @@ int main(int argc, char** argv)
         // 已经是下一帧的状态了
         x.x() += systemNoise*noise(generator);
         x.y() += systemNoise*noise(generator);
-        x.theta() += systemNoise*noise(generator);
         
         // Predict state for current time-step using the filters
         // auto x_pred = predictor.predict(sys, u);
@@ -119,11 +112,13 @@ int main(int argc, char** argv)
         }
         
         // Print to stdout as csv format
+        /*
         std::cout   << x.x() << "," << x.y() << "," << x.theta() << ","
                     << x_pred.x() << "," << x_pred.y() << "," << x_pred.theta()  << ","
                     << x_ekf.x() << "," << x_ekf.y() << "," << x_ekf.theta()  << ","
                     << x_ukf.x() << "," << x_ukf.y() << "," << x_ukf.theta()
                     << std::endl;
+        */
     }
     
     return 0;
