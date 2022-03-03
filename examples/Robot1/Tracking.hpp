@@ -2,7 +2,10 @@
 #define KALMAN_TRACKING_LIDAR_HPP_
 
 #include <set>
-#include <kalman/Types.hpp>
+#include <vector>
+#include <kalman/UnscentedKalmanFilter.hpp>
+
+#include "BipartiteHungarian.h"
 
 namespace KalmanTracking
 {
@@ -10,7 +13,7 @@ typedef struct {
     float x;        //精度 10微米
     float y;        //精度 10微米
     float z;        //精度 10微米
-    qint32 intensity;    //能量值
+    int32_t intensity;    //能量值
 }PV_POINT_XYZI;
 
 //目标检测结果数据
@@ -32,8 +35,8 @@ typedef struct {
 } PV_OBJ_DATA;
 
 struct SIn {    // 输入的目标点云
-    qint64 m_time_ms;             //消息时间戳
-    qint32 m_obj_num;             //有效目标数量
+    int64_t m_time_ms;             //消息时间戳
+    int32_t m_obj_num;             //有效目标数量
     PV_OBJ_DATA m_obj_data[300];  //目标参数
     int m_obj_point_count[300];   //第x个目标的点云的数量
     PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
@@ -61,7 +64,7 @@ struct KalmanObj
     int predict_num;
     State x;
     Control u;
-    Kalman::UnscentedKalmanFilter<State> ukf(1);
+    Kalman::UnscentedKalmanFilter<State> ukf;
 };
 
 struct searchEdge {
@@ -70,9 +73,9 @@ struct searchEdge {
     bool operator() (WeightedBipartiteEdge &edge) {
         return (edge.left == left && edge.right == right);
     }
-}
+};
 
-Kalman::Vector<float, 10> targetVector(PV_OBJ_DATA &data) {
+Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
     Kalman::Vector<float, 10> target;
     target << data.width, data.length, data.height,
               data.x_pos, data.y_pos, data.z_pos,
@@ -80,12 +83,12 @@ Kalman::Vector<float, 10> targetVector(PV_OBJ_DATA &data) {
               data.intensity;
     return target;
 }
-std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prev, std::set<PV_OBJ_DATA> next) {
+std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prevSet, std::set<PV_OBJ_DATA> nextSet) {
     // 当前目标 next 与上一次目标 prev 匹配关系
     std::vector<WeightedBipartiteEdge> edges;
     for (auto &prev : prevSet) {
         Kalman::Vector<float, 10> prevTarget = targetVector(prev);
-        for (auto &next : inSet) {
+        for (auto &next : nextSet) {
             Kalman::Vector<float, 10> nextTarget = targetVector(next);
             Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
@@ -93,16 +96,19 @@ std::vector<WeightedBipartiteEdge> createEdges(std::set<PV_OBJ_DATA> prev, std::
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
     }
+    return edges;
 }
 
-bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
+bool ProcessData() //const QByteArray &in, QByteArray &out)
 {
-    SIn* pIn = (SIn*)(in.data());
+    SIn* pIn; // = (SIn*)(in.data());
     std::set<PV_OBJ_DATA> inSet;
     // 加入Set并按照index排序
     inSet.insert(pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
     std::set<PV_OBJ_DATA> prevSet;
-    std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prev.size(), edges);
+    std::vector<WeightedBipartiteEdge> edges = createEdges(prevSet, inSet);
+    std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevSet.size(), edges);
+    /*
     // TODO 左边与右边数量不一致会怎样？
     // TODO 左边多个节点会连接到右边一个节点吗？
     // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
@@ -187,6 +193,8 @@ bool CDataProcessor::ProcessData(const QByteArray &in, QByteArray &out)
             // 观测状态对照的是预测后的状态了
             x_ukf = ukf.update(pm, position);
         }
+*/
+	return true;
 }
 
 } // namespace KalmanTracking
