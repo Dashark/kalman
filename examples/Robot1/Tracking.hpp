@@ -63,7 +63,13 @@ struct searchEdge {
     }
 };
 
-Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
+/**
+ * @brief 数据格式转换
+ * 
+ * @param data 自定义数据
+ * @return Kalman::Vector<float, 10> Eigen的向量
+ */
+Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
     Kalman::Vector<float, 10> target;
     target << data.width, data.length, data.height,
               data.x_pos, data.y_pos, data.z_pos,
@@ -71,15 +77,25 @@ Kalman::Vector<float, 10> targetVector(const PV_OBJ_DATA &data) {
               data.intensity;
     return target;
 }
-std::vector<WeightedBipartiteEdge> createEdges(std::vector<PV_OBJ_DATA> prevSet, std::vector<PV_OBJ_DATA> nextSet) {
-    // 当前目标 next 与上一次目标 prev 匹配关系
+
+/**
+ * @brief Create a Edges object
+ * 
+ * @param prevSet 前一次观测目标
+ * @param nextSet 后一次观测目标
+ * @return std::vector<WeightedBipartiteEdge> 目标之间匹配的距离
+ */
+std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &prevSet, const std::vector<PV_OBJ_DATA> &nextSet)
+{
+    // 当前目标 next 与上一次目标 prev 的特征距离
     std::vector<WeightedBipartiteEdge> edges;
     for (auto &prev : prevSet) {
-        Kalman::Vector<float, 10> prevTarget = targetVector(prev);
+        Kalman::Vector<float, 10> prevTarget = toVector(prev);
         for (auto &next : nextSet) {
-            Kalman::Vector<float, 10> nextTarget = targetVector(next);
+            Kalman::Vector<float, 10> nextTarget = toVector(next);
             Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+            std::cout << "target distance: " << dl << std::endl;
             // 构造所有边的权重
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
@@ -108,11 +124,11 @@ public:
     LidarTracking bipartite(std::vector<PV_OBJ_DATA> &in) {
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevTargets_.size(), edges);
-    // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
-    int i = 0;
-    std::vector<std::pair<int, int>> lr_match;
-    for (int &id : matching) {
-        std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
+        // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
+        int i = 0;
+        std::vector<std::pair<int, int>> lr_match;
+        for (int &id : matching) {
+            std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
         if (it != edges.end() ) {
             // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
             if (it->cost < threshold_) {
