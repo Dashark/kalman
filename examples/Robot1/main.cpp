@@ -43,7 +43,7 @@ int main(int argc, char** argv)
     pIn.m_obj_data[0].x_speed = 0.0f;
     pIn.m_obj_data[0].y_speed = 0.0f;
     pIn.m_obj_data[0].z_speed = 0.0f;
-    pIn.m_obj_data[0].index = 0.0f;
+    pIn.m_obj_data[0].index = 0;
     SIn sIn;
     sIn.m_obj_num = 1;
     sIn.m_obj_data[0].height = 1.0f;
@@ -56,7 +56,7 @@ int main(int argc, char** argv)
     sIn.m_obj_data[0].x_speed = 1.0f;
     sIn.m_obj_data[0].y_speed = 1.0f;
     sIn.m_obj_data[0].z_speed = 1.0f;
-    sIn.m_obj_data[0].index = 1.0f;
+    sIn.m_obj_data[0].index = 1;
     std::vector<PV_OBJ_DATA> sinSet, pinSet;
     sinSet.insert(sinSet.end(), sIn.m_obj_data, sIn.m_obj_data+sIn.m_obj_num);
     pinSet.insert(pinSet.end(), pIn.m_obj_data, pIn.m_obj_data+pIn.m_obj_num);
