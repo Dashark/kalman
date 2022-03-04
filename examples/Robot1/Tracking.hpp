@@ -200,8 +200,8 @@ private:
     };
 };
 /**
- * @brief 管理容器，所有Kalman对象都预测一次，集合的代理对象
- * Kalman是预测和修正后的结果，与Lidar观测还不是一个东西
+ * @brief Kalman对象包装Kalman UKF的实现，保留ID（其实也可以不保留）
+ * 
  * 
  */
 class KalmanObject {
@@ -211,15 +211,18 @@ public:
         x.setZero();
         u.setZero();
     }
-    bool predict() {   //所有目标可以先行预测
+    State predict() {   //所有目标可以先行预测
         predict_num += 1;
         x = ukf.predict(sys, u);
-        return true;
+        return x;
     }
-    bool update(PositionMeasurement &me) {
+    State update(PositionMeasurement &me) {
         predict_num = 0;
         x = ukf.update(pm, me);
-        return true;
+        return x;
+    }
+    void updateCtrl() {
+       // 刷新控制 
     }
 private:
     int predict_num;
