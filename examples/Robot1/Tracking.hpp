@@ -96,7 +96,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             Kalman::Vector<float, 10> nextTarget = toVector(next);
             Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-            std::cout << "target distance: " << dl << std::endl;
+            std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
             edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
         }
