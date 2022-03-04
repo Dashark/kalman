@@ -10,8 +10,6 @@
 
 #include "BipartiteHungarian.h"
 
-namespace KalmanTracking
-{
 typedef struct {
     float x;        //精度 10微米
     float y;        //精度 10微米
@@ -44,6 +42,8 @@ struct SIn {    // 输入的目标点云
     int m_obj_point_count[300];   //第x个目标的点云的数量
     PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
+namespace KalmanTracking
+{
 
 typedef float T;
 
