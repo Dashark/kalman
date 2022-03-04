@@ -61,7 +61,7 @@ int main(int argc, char** argv)
     sinSet.insert(sinSet.end(), sIn.m_obj_data, sIn.m_obj_data+sIn.m_obj_num);
     pinSet.insert(pinSet.end(), pIn.m_obj_data, pIn.m_obj_data+pIn.m_obj_num);
     LidarTracking lidarT(pinSet);
-    lidarT.bipartite(second cloud);
+    lidarT.bipartite(sIn);
     
     return 0;
 }

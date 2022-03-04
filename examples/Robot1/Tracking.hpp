@@ -3,6 +3,7 @@
 
 #include <set>
 #include <vector>
+#include <iostream>
 
 #include "SystemModel.hpp"
 #include "PositionMeasurementModel.hpp"
