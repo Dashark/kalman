@@ -28,6 +28,9 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
+// 最多支持300个目标
+#define N 300
+
 int main(int argc, char** argv)
 {
     //一些数据结构转换
@@ -62,6 +65,12 @@ int main(int argc, char** argv)
     pinSet.insert(pinSet.end(), pIn.m_obj_data, pIn.m_obj_data+pIn.m_obj_num);
     LidarTracking lidarT(pinSet); //建立雷达追踪一帧
     LidarTracking lidarN = lidarT.bipartite(sinSet);  //追踪下一帧，返回追踪的结果
+    State x[N];
+    Control u[N];
+    Kalman::UnscentedKalmanFilter<State> ukf[300];
+    SystemModel sys;
+    PositionMeasurementModel pmm;
+    lidarN.tracking(x, u, ukf, sys, pmm);
     
     return 0;
 }

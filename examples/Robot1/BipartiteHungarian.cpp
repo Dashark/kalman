@@ -42,18 +42,18 @@ static const std::pair<int, std::vector<int> > bruteForceInternal(const int n, c
         return std::make_pair(0, std::vector<int>());
     }
 
-    int bestCost = 1 << 20;
+    int bestCost = 1 << 20;  //总体权重
     std::vector<int> bestEdges;
     for (int edgeIndex = edgeUpTo; edgeIndex < edges.size(); ++edgeIndex) {
         const WeightedBipartiteEdge& edge = edges[edgeIndex];
-        if (!leftMatched[edge.left] && !rightMatched[edge.right]) {
+        if (!leftMatched[edge.left] && !rightMatched[edge.right]) {  //有边
             leftMatched[edge.left] = true;
-            rightMatched[edge.right] = true;
+            rightMatched[edge.right] = true;  //锁定
             std::pair<int, std::vector<int> > remainder = bruteForceInternal(n, edges, leftMatched, rightMatched, edgeIndex + 1, matchCount + 1);
             leftMatched[edge.left] = false;
-            rightMatched[edge.right] = false;
+            rightMatched[edge.right] = false;  //解锁
 
-            if (remainder.first + edge.cost < bestCost) {
+            if ((remainder.first + edge.cost) < bestCost) { 
                 bestCost = remainder.first + edge.cost;
                 bestEdges = remainder.second;
                 bestEdges.push_back(edgeIndex);
@@ -66,9 +66,9 @@ static const std::pair<int, std::vector<int> > bruteForceInternal(const int n, c
 
 const std::vector<int> bruteForce(const int n, const std::vector<WeightedBipartiteEdge> edges)
 {
-    std::vector<bool> leftMatched(n), rightMatched(n);
+    std::vector<bool> leftMatched(n, false), rightMatched(n, false);
     std::vector<int> edgeIndices = bruteForceInternal(n, edges, leftMatched, rightMatched).second;
-    std::vector<int> matching(n);
+    std::vector<int> matching(n, -1);
     for (int i = 0; i < edgeIndices.size(); ++i) {
         const WeightedBipartiteEdge& edge = edges[edgeIndices[i]];
         matching[edge.left] = edge.right;

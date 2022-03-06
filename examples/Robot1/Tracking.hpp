@@ -90,15 +90,20 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 {
     // 当前目标 next 与上一次目标 prev 的特征距离
     std::vector<WeightedBipartiteEdge> edges;
-    for (auto &prev : prevSet) {
-        Kalman::Vector<float, 10> prevTarget = toVector(prev);
-        for (auto &next : nextSet) {
-            Kalman::Vector<float, 10> nextTarget = toVector(next);
+    for (int i = 0; i < prevSet.size(); ++i) {
+        Kalman::Vector<float, 10> prevTarget = toVector(prevSet[i]);
+        for (int j = 0; j < nextSet.size(); ++j) {
+            PV_OBJ_DATA temp = nextSet[j];
+            temp.x_speed = temp.x_pos - prevSet[i].x_pos;
+            temp.y_speed = temp.y_pos - prevSet[i].y_pos;
+            temp.z_speed = temp.z_pos - prevSet[i].z_pos;
+            Kalman::Vector<float, 10> nextTarget = toVector(temp);
             Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
             std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
-            edges.push_back( WeightedBipartiteEdge(prev.index, next.index, d1) );
+            if (dl < threshold_)
+                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
         }
     }
     return edges;
@@ -113,6 +118,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 class LidarTracking {
 public:
     LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {
+        // 构造里目标ID固定了，新目标要顺序编号
         threshold_ = 1.0f;
     }
     /**
@@ -124,8 +130,10 @@ public:
      */
     LidarTracking bipartite(std::vector<PV_OBJ_DATA> &in) {
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
-        std::vector<int> matching = hungarianMinimumWeightPerfectMatching(prevTargets_.size(), edges);
-        // 还要剔除距离明显过大的匹配，从而得到未成功匹配的目标
+        std::vector<int> matching = bruteForce(prevTargets_.size(), edges);
+        // 剔除距离明显过大的边
+        edges = edgeThreshold(edges);
+        matching = matchThreshold(edges, matching);
         int i = 0;
         std::vector<std::pair<int, int>> lr_match;
         for (int &id : matching) {
@@ -142,9 +150,10 @@ public:
             // 这儿match和unmatch有可能掉了成员
         }
         i += 1;
-    }
+        }
         std::vector<PV_OBJ_DATA> temp;
         std::copy_if(prevTargets_.begin(), prevTargets_.end(), std::back_inserter(temp), copyID(left_unmatch_) );
+        for (auto &id : left_unmatch_) 
         std::copy_if(in.begin(), in.end(), std::back_inserter(temp), copyID(right_unmatch_) );
         /*
         for (int &id : left_unmatch_) {
@@ -178,9 +187,65 @@ public:
     std::vector<int> getMatching() const { return matching_; }
     std::vector<int> getLosting() const { return left_unmatch_; }
     std::vector<int> getAppears() const { return right_unmatch_; }
+    std::vector<WeightedBipartiteEdge> edgeThreshold(std::vector<WeightedBipartiteEdge> &edges)
+    {
+        std::vector<WeightedBipartiteEdge> results;
+        for (auto &e : edges) {
+            if (e.cost < threshold_) {
+                results.push_back(e);
+                left_set_.insert(e.left);
+                right_set_.insert(e.right);
+            }
+        }
+        return results;
+    }
+    /**
+     * @brief Lidar目标更新自己对应的Kalman对象
+     * 
+     * @param objs Kalman对象
+     */
+    void tracking(State x[], Control u[], Kalman::UnscentedKalmanFilter<State> ukf[], SystemModel &sys, PositionMeasurementModel &pmm)
+    {
+        // Lidar目标
+        for (auto &tar : prevTargets) {
+            assert(tar.index < 300);
+
+            if (right_unmatch_.end() != std::find(right_unmatch_.begin(), right_unmatch_.end(), tar.index) {
+                //新目标，还需要其它信息计算变化量
+                x[tar.index] << data.x_pos, data.y_pos, data.z_pos,
+                                data.length, data.width, data.height,
+                                data.intensity;
+                u[tar.index].setZero(); // Kalman对象还没有控制变量
+                ukf[tar.index].init(x[tar.index]);
+            }
+            else {  //旧目标
+                // 旧目标的预测
+                x[tar.index] = ukf.predict(sys[tar.index], u[tar.index]);
+                if (left_unmatch_.end() != std::find(left_unmatch_.begin(), left_unmatch_.end(), tar.index) {
+                    // 目标要更新
+                    tar.intensity = it->x.intensity();
+                    tar.x_pos = it->x.x();
+                    tar.y_pos = it->x.y();
+                    tar.z_pos = it->x.z();
+                    tar.length = it->x.length();
+                    tar.width = it->x.width();
+                    tar.height = it->x.height();
+                }
+                else { // 旧目标的更新
+                    PositionMeasurement meas << data.x_pos, data.y_pos, data.z_pos,
+                                                data.length, data.width, data.height,
+                                                data.intensity;
+                    x[tar.index] = utf.update(pmm, meas);
+                    //TODO  还要更新控制变量
+                }
+            }
+        }
+    }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
+    std::map<int, TARGET_STATUS> status_;
     std::vector<int> matching_, left_unmatch_, right_unmatch_;
+    std::set<int> left_set_, right_set_;
     float threshold_;
 
 private:
@@ -210,6 +275,13 @@ public:
         predict_num = 0;
         x.setZero();
         u.setZero();
+    }
+    KalmanObject(const PV_OBJ_DATA &data)
+    {
+        x <<  data.x_pos, data.y_pos, data.z_pos,
+              data.length, data.width, data.height,
+              data.intensity;
+        //u << 变化量怎么计算呢？
     }
     State predict() {   //所有目标可以先行预测
         predict_num += 1;
@@ -306,7 +378,7 @@ bool ProcessData() //const QByteArray &in, QByteArray &out)
             // 观测状态对照的是预测后的状态了
             x_ukf = ukf.update(pm, position);
         }
-	return true;
+    return true;
 }*/
 
 } // namespace KalmanTracking
