@@ -82,9 +82,9 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 {
     // 当前目标 next 与上一次目标 prev 的特征距离
     std::vector<WeightedBipartiteEdge> edges;
-    for (int i = 0; i < prevSet.size(); ++i) {
+    for (size_t i = 0; i < prevSet.size(); ++i) {
         Kalman::Vector<float, 10> prevTarget = toVector(prevSet[i]);
-        for (int j = 0; j < nextSet.size(); ++j) {
+        for (size_t j = 0; j < nextSet.size(); ++j) {
             PV_OBJ_DATA temp = nextSet[j];
             temp.x_speed = temp.x_pos - prevSet[i].x_pos;
             temp.y_speed = temp.y_pos - prevSet[i].y_pos;
@@ -94,7 +94,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
             std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
-            if (dl < threshold_)
+            if (d1 < threshold_)
                 edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
         }
     }
@@ -110,7 +110,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
  */
 class LidarTracking {
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in) {
         // 构造里目标ID固定了，新目标要顺序编号
         threshold_ = 1.0f;
         for (int i = 0; i < N; ++i) {
@@ -147,16 +147,17 @@ public:
         }
         for (auto &obj : in) {
             if (right[obj.index] == -1 ) { //新目标
-                obj.index = max_id;
-                prevTargets_.push_back(obj);
+                PV_OBJ_DATA temp = obj;
+                temp.index = max_id;
+                prevTargets_.push_back(temp);
                 max_id += 1;
 
                 //新目标，还需要其它信息计算变化量
-                x_[obj.index] << obj.x_pos, obj.y_pos, obj.z_pos,
+                x_[temp.index] << obj.x_pos, obj.y_pos, obj.z_pos,
                                 obj.length, obj.width, obj.height,
                                 obj.intensity;
-                u_[obj.index].setZero(); // Kalman对象还没有控制变量
-                ukf_[obj.index].init(x_[obj.index]);
+                u_[temp.index].setZero(); // Kalman对象还没有控制变量
+                ukf_[temp.index].init(x_[temp.index]);
             }
         }
     }
@@ -168,12 +169,12 @@ public:
     void kalmanProcess(PV_OBJ_DATA &obj)
     {
         x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
-        obj.x_speed = u_[obj.index].dx;
-        obj.y_speed = u_[obj.index].dy;
-        obj.z_speed = u_[obj.index].dz;
-        obj.x_pos = x_[obj.index].x_pos;
-        obj.y_pos = x_[obj.index].y_pos;
-        obj.z_pos = x_[obj.index].z_pos;
+        obj.x_speed = u_[obj.index].dx();
+        obj.y_speed = u_[obj.index].dy();
+        obj.z_speed = u_[obj.index].dz();
+        obj.x_pos = x_[obj.index].x();
+        obj.y_pos = x_[obj.index].y();
+        obj.z_pos = x_[obj.index].z();
         predict_[obj.index] += 1;
     }
     /**
@@ -182,10 +183,10 @@ public:
      * @param left 上一次目标
      * @param right 当前目标
      */
-    void kalmanProcess(PV_OBJ_DATA &left, PV_OBJ_DATA &right)
+    void kalmanProcess(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     {
         //按照Lidar更新目标
-        obj.x_speed= right.x_pos - left.x_pos;
+        left.x_speed= right.x_pos - left.x_pos;
         left.y_speed= right.y_pos - left.y_pos;
         left.z_speed= right.z_pos - left.z_pos;
         left.x_pos = right.x_pos;
@@ -197,19 +198,20 @@ public:
         left.intensity = right.intensity;
 
         //更新目标的控制
-        u_[left.index].dx = right.x_pos - left.x_pos;
-        u_[left.index].dy = right.y_pos - left.y_pos;
-        u_[left.index].dz = right.z_pos - left.z_pos;
-        u_[left.index].dl = right.length - left.length;
-        u_[left.index].dw = right.width - left.width;
-        u_[left.index].dh = right.height - left.height;
-        u_[left.index].di = right.intensity - left.intensity;
+        u_[left.index].dx() = right.x_pos - left.x_pos;
+        u_[left.index].dy() = right.y_pos - left.y_pos;
+        u_[left.index].dz() = right.z_pos - left.z_pos;
+        u_[left.index].dl() = right.length - left.length;
+        u_[left.index].dw() = right.width - left.width;
+        u_[left.index].dh() = right.height - left.height;
+        u_[left.index].di() = right.intensity - left.intensity;
 
         //对应Kalman的预测与更新
         x_[left.index] = ukf_[left.index].predict(sys_, u_[left.index]);
-        PositionMeasurement measure << left.x_pos, left.y_pos, left.z_pos,
-                                    left.length, left.width, left.height,
-                                    left.intensity;
+        PositionMeasurement measure;
+        measure << left.x_pos, left.y_pos, left.z_pos,
+                    left.length, left.width, left.height,
+                    left.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
         predict_[left.index] = 0;
     }
@@ -225,7 +227,7 @@ private:
     // 系统是整个场景一个系统
     SystemModel sys_;
     // Measurement models
-    PositionMeasurementModel pmm_;
+    PositionModel pmm_;
 };
 
 } // namespace KalmanTracking
