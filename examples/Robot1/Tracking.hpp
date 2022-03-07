@@ -71,35 +71,6 @@ Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
     return target;
 }
 
-/**
- * @brief Create a Edges object
- * 
- * @param prevSet 前一次观测目标
- * @param nextSet 后一次观测目标
- * @return std::vector<WeightedBipartiteEdge> 目标之间匹配的距离
- */
-std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &prevSet, const std::vector<PV_OBJ_DATA> &nextSet)
-{
-    // 当前目标 next 与上一次目标 prev 的特征距离
-    std::vector<WeightedBipartiteEdge> edges;
-    for (size_t i = 0; i < prevSet.size(); ++i) {
-        Kalman::Vector<float, 10> prevTarget = toVector(prevSet[i]);
-        for (size_t j = 0; j < nextSet.size(); ++j) {
-            PV_OBJ_DATA temp = nextSet[j];
-            temp.x_speed = temp.x_pos - prevSet[i].x_pos;
-            temp.y_speed = temp.y_pos - prevSet[i].y_pos;
-            temp.z_speed = temp.z_pos - prevSet[i].z_pos;
-            Kalman::Vector<float, 10> nextTarget = toVector(temp);
-            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
-            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-            std::cout << "target distance: " << d1 << std::endl;
-            // 构造所有边的权重
-            if (d1 < threshold_)
-                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
-        }
-    }
-    return edges;
-}
 
 #define N 300
 /**
@@ -132,7 +103,7 @@ public:
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
-        int max_id = 0;
+        uint max_id = 0;
         for (PV_OBJ_DATA &obj : prevTargets_) {
             int right = matching[obj.index];
             if (right >= 0)
@@ -228,6 +199,38 @@ private:
     SystemModel sys_;
     // Measurement models
     PositionModel pmm_;
+
+private:
+/**
+ * @brief Create a Edges object
+ * 
+ * @param prevSet 前一次观测目标
+ * @param nextSet 后一次观测目标
+ * @return std::vector<WeightedBipartiteEdge> 目标之间匹配的距离
+ */
+std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &prevSet, const std::vector<PV_OBJ_DATA> &nextSet)
+{
+    // 当前目标 next 与上一次目标 prev 的特征距离
+    std::vector<WeightedBipartiteEdge> edges;
+    for (size_t i = 0; i < prevSet.size(); ++i) {
+        Kalman::Vector<float, 10> prevTarget = toVector(prevSet[i]);
+        for (size_t j = 0; j < nextSet.size(); ++j) {
+            PV_OBJ_DATA temp = nextSet[j];
+            temp.x_speed = temp.x_pos - prevSet[i].x_pos;
+            temp.y_speed = temp.y_pos - prevSet[i].y_pos;
+            temp.z_speed = temp.z_pos - prevSet[i].z_pos;
+            Kalman::Vector<float, 10> nextTarget = toVector(temp);
+            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
+            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+            std::cout << "target distance: " << d1 << std::endl;
+            // 构造所有边的权重
+            if (d1 < threshold_)
+                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
+        }
+    }
+    return edges;
+}
+
 };
 
 } // namespace KalmanTracking
