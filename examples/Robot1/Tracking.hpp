@@ -103,7 +103,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
             if (dl < threshold_)
-                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
+            edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
         }
     }
     return edges;
@@ -133,7 +133,8 @@ public:
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
-        std::vector<int> matching = bruteForce(leftNodes(edges), edges);
+        int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
+        std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
         int max_id = 0;
         for (PV_OBJ_DATA &obj : prevTargets_) {
