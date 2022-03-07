@@ -36,20 +36,20 @@ struct LeftEdge {
     }
 };
 
-static const std::pair<int, std::vector<int> > bruteForceInternal(const int n, const std::vector<WeightedBipartiteEdge> edges, std::vector<bool>& leftMatched, std::vector<bool>& rightMatched, const int edgeUpTo = 0, const int matchCount = 0)
+static const std::pair<float, std::vector<int> > bruteForceInternal(const int n, const std::vector<WeightedBipartiteEdge> edges, std::vector<bool>& leftMatched, std::vector<bool>& rightMatched, const int edgeUpTo = 0, const int matchCount = 0)
 {
     if (matchCount == n) {
         return std::make_pair(0, std::vector<int>());
     }
 
-    int bestCost = 1 << 20;  //总体权重
+    float bestCost = 1 << 20;  //总体权重
     std::vector<int> bestEdges;
     for (int edgeIndex = edgeUpTo; edgeIndex < edges.size(); ++edgeIndex) {
         const WeightedBipartiteEdge& edge = edges[edgeIndex];
         if (!leftMatched[edge.left] && !rightMatched[edge.right]) {  //有边
             leftMatched[edge.left] = true;
             rightMatched[edge.right] = true;  //锁定
-            std::pair<int, std::vector<int> > remainder = bruteForceInternal(n, edges, leftMatched, rightMatched, edgeIndex + 1, matchCount + 1);
+            std::pair<float, std::vector<int> > remainder = bruteForceInternal(n, edges, leftMatched, rightMatched, edgeIndex + 1, matchCount + 1);
             leftMatched[edge.left] = false;
             rightMatched[edge.right] = false;  //解锁
 
@@ -64,11 +64,12 @@ static const std::pair<int, std::vector<int> > bruteForceInternal(const int n, c
     return std::make_pair(bestCost, bestEdges);
 }
 
+#define N 300
 const std::vector<int> bruteForce(const int n, const std::vector<WeightedBipartiteEdge> edges)
 {
-    std::vector<bool> leftMatched(n, false), rightMatched(n, false);
+    std::vector<bool> leftMatched(N, false), rightMatched(N, false);
     std::vector<int> edgeIndices = bruteForceInternal(n, edges, leftMatched, rightMatched).second;
-    std::vector<int> matching(n, -1);
+    std::vector<int> matching(N, -1);
     for (int i = 0; i < edgeIndices.size(); ++i) {
         const WeightedBipartiteEdge& edge = edges[edgeIndices[i]];
         matching[edge.left] = edge.right;
