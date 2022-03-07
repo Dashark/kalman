@@ -136,7 +136,33 @@ public:
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
+        kalmanTracking();
+        for (int i = 0; i < matching.size(); ++i) {
+            // i map to matching[i]
+        }
+        kalmanPredict(prevTargets_);
         int max_id = 0;
+        for (PV_OBJ_DATA &obj : prevTargets_) {
+        int right[N] = {-1};
+        for (int &id : matching) {
+            right[id] = id;
+        }
+        for (int i = 0; i < in.size(); ++i) {
+            if (right[i] == -1 ) { //新目标
+                in[i].index = max_id;
+                prevTargets_.push_back(in[i]);
+                max_id += 1;
+
+                //新目标，还需要其它信息计算变化量
+                x[tar.index] << data.x_pos, data.y_pos, data.z_pos,
+                                data.length, data.width, data.height,
+                                data.intensity;
+                u[tar.index].setZero(); // Kalman对象还没有控制变量
+                ukf[tar.index].init(x[tar.index]);
+            }
+        }
+    }
+    void kalmanPredict(std::vector<int> matching ) {
         for (PV_OBJ_DATA &obj : prevTargets_) {
             if (matching[obj.index] >= 0) {    //有匹配了，要Kalman预测与更新，此处融合
                 obj.x_speed= in[matching[obj.index]].x_pos - obj.x_pos;
@@ -149,19 +175,16 @@ public:
                 obj.width = in[matching[obj.index]].width;
                 obj.height = in[matching[obj.index]].height;
                 obj.intensity = in[matching[obj.index]].intensity;
+
+                u_[obj.index].dx = in[matching[obj.index]].x_pos - obj.x_pos;
+                u_[obj.index].dy = in[matching[obj.index]].y_pos - obj.y_pos;
+                u_[obj.index].dz = in[matching[obj.index]].z_pos - obj.z_pos;
+                u_[obj.index].dl = in[matching[obj.index]].length - obj.length;
+                u_[obj.index].dw = in[matching[obj.index]].width - obj.width;
+                u_[obj.index].dh = in[matching[obj.index]].height - obj.height;
+                u_[obj.index].di = in[matching[obj.index]].intensity - obj.intensity;
             }
             max_id = max_id < obj.index ? obj.index : max_id;
-        }
-        int right[N] = {-1};
-        for (int &id : matching) {
-            right[id] = id;
-        }
-        for (int i = 0; i < in.size(); ++i) {
-            if (right[i] == -1 ) { //新目标
-                in[i].index = max_id;
-                prevTargets_.push_back(in[i]);
-                max_id += 1;
-            }
         }
     }
     /**
