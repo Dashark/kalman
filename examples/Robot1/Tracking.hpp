@@ -109,6 +109,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     return edges;
 }
 
+#define N 300
 /**
  * @brief 基于Lidar的跟踪。
  * 两帧点云按照特征距离建立先后关系
@@ -122,82 +123,45 @@ public:
         threshold_ = 1.0f;
     }
     /**
-     * @brief 二分图算法匹配，第三方算法。同时承担Kalman的工厂
+     * @brief 二分图算法匹配，第三方算法。
      * 
      * @param in 当前帧的点云目标
      * @return LidarTracking 新对象包含所有的点云目标
-     * 匹配后产生新对象，同时不破坏老对象
+     * 
      */
-    LidarTracking bipartite(std::vector<PV_OBJ_DATA> &in) {
+    void bipartite(std::vector<PV_OBJ_DATA> &in) {
+        // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
-        std::vector<int> matching = bruteForce(prevTargets_.size(), edges);
-        // 剔除距离明显过大的边
-        edges = edgeThreshold(edges);
-        matching = matchThreshold(edges, matching);
-        int i = 0;
-        std::vector<std::pair<int, int>> lr_match;
+        // 二分最优匹配
+        std::vector<int> matching = bruteForce(leftNodes(edges), edges);
+        // 先做Kalman
+        int max_id = 0;
+        for (PV_OBJ_DATA &obj : prevTargets_) {
+            if (matching[obj.index] >= 0) {    //有匹配了，要Kalman预测与更新，此处融合
+                obj.x_speed= in[matching[obj.index]].x_pos - obj.x_pos;
+                obj.y_speed= in[matching[obj.index]].y_pos - obj.y_pos;
+                obj.z_speed= in[matching[obj.index]].z_pos - obj.z_pos;
+                obj.x_pos = in[matching[obj.index]].x_pos;
+                obj.y_pos = in[matching[obj.index]].y_pos;
+                obj.z_pos = in[matching[obj.index]].z_pos;
+                obj.length = in[matching[obj.index]].length;
+                obj.width = in[matching[obj.index]].width;
+                obj.height = in[matching[obj.index]].height;
+                obj.intensity = in[matching[obj.index]].intensity;
+            }
+            max_id = max_id < obj.index ? obj.index : max_id;
+        }
+        int right[N] = {-1};
         for (int &id : matching) {
-            std::vector<WeightedBipartiteEdge>::iterator it = std::find_if(edges.begin(), edges.end(), searchEdge(i, id)); 
-        if (it != edges.end() ) {
-            // 匹配的边权重不应该太大，但是现在也不清楚具体是多少
-            if (it->cost < threshold_) {
-                lr_match.push_back(std::make_pair(it->left, it->right));
-            }
-            else {
-                left_unmatch_.push_back(it->left);
-                right_unmatch_.push_back(it->right);
-            }
-            // 这儿match和unmatch有可能掉了成员
+            right[id] = id;
         }
-        i += 1;
-        }
-        std::vector<PV_OBJ_DATA> temp;
-        std::copy_if(prevTargets_.begin(), prevTargets_.end(), std::back_inserter(temp), copyID(left_unmatch_) );
-        for (auto &id : left_unmatch_) 
-        std::copy_if(in.begin(), in.end(), std::back_inserter(temp), copyID(right_unmatch_) );
-        /*
-        for (int &id : left_unmatch_) {
-            std::vector<PV_OBJ_DATA>::iterator it = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV);
-            if (it != prevTargets_.end() ) {
-                temp.push_back(*it);
-            }
-            else
-                assert(false);
-        }
-        for (int &id : right_unmatch_) {
-            std::vector<PV_OBJ_DATA>::iterator it = std::find_if(in.begin(), in.end(), searchPV);
-            if (it != in.end() ) {
-                temp.push_back(*it);
-            }
-            else
-                assert(false);
-        }*/
-        for (std::pair<int, int> &pid : lr_match) {
-            std::vector<PV_OBJ_DATA>::iterator itl = std::find_if(prevTargets_.begin(), prevTargets_.end(), searchPV(pid.first));
-            std::vector<PV_OBJ_DATA>::iterator itr = std::find_if(in.begin(), in.end(), searchPV(pid.second));
-            if (itr != in.end() && itl != prevTargets_.end()) {
-                itr->index = itl->index;
-                temp.push_back(*itr);
-            }
-            else
-                assert(false);
-        }
-        return LidarTracking(temp);
-    }
-    std::vector<int> getMatching() const { return matching_; }
-    std::vector<int> getLosting() const { return left_unmatch_; }
-    std::vector<int> getAppears() const { return right_unmatch_; }
-    std::vector<WeightedBipartiteEdge> edgeThreshold(std::vector<WeightedBipartiteEdge> &edges)
-    {
-        std::vector<WeightedBipartiteEdge> results;
-        for (auto &e : edges) {
-            if (e.cost < threshold_) {
-                results.push_back(e);
-                left_set_.insert(e.left);
-                right_set_.insert(e.right);
+        for (int i = 0; i < in.size(); ++i) {
+            if (right[i] == -1 ) { //新目标
+                in[i].index = max_id;
+                prevTargets_.push_back(in[i]);
+                max_id += 1;
             }
         }
-        return results;
     }
     /**
      * @brief Lidar目标更新自己对应的Kalman对象
@@ -207,7 +171,7 @@ public:
     void tracking(State x[], Control u[], Kalman::UnscentedKalmanFilter<State> ukf[], SystemModel &sys, PositionMeasurementModel &pmm)
     {
         // Lidar目标
-        for (auto &tar : prevTargets) {
+        for (auto &tar : prevTargets_) {
             assert(tar.index < 300);
 
             if (right_unmatch_.end() != std::find(right_unmatch_.begin(), right_unmatch_.end(), tar.index) {
@@ -243,9 +207,7 @@ public:
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
-    std::map<int, TARGET_STATUS> status_;
-    std::vector<int> matching_, left_unmatch_, right_unmatch_;
-    std::set<int> left_set_, right_set_;
+    std::vector<int> matching_;
     float threshold_;
 
 private:
@@ -263,6 +225,28 @@ private:
         }
         int id_;
     };
+private:
+    /**
+     * @brief 统计边中左节点的数量（去重）
+     * 
+     * @param edges 边对象
+     * @return int  左节点数量
+     */
+    int leftNodes(const std::vector<WeightedBipartiteEdge> &edges)
+    {
+        // 记录边集索引
+        int left[N]={-1};
+        // left中有效节点的数量
+        int left_num = 0;
+        // 清理边集的索引关系
+        for (auto &e : edges) {
+            if (left[e.left] < 0) {
+                left[e.left] = e.left;
+                left_num += 1;
+            }
+        }
+        return left_num;
+    }
 };
 /**
  * @brief Kalman对象包装Kalman UKF的实现，保留ID（其实也可以不保留）
