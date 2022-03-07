@@ -105,6 +105,12 @@ public:
     {
         M measurement;
         measurement.x() = x.x();
+        measurement.y() = x.y();
+        measurement.z() = x.z();
+        measurement.length() = x.length();
+        measurement.width() = x.width();
+        measurement.height() = x.height();
+        measurement.intensity() = x.intensity();
         
         return measurement;
     }

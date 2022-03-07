@@ -64,13 +64,7 @@ int main(int argc, char** argv)
     sinSet.insert(sinSet.end(), sIn.m_obj_data, sIn.m_obj_data+sIn.m_obj_num);
     pinSet.insert(pinSet.end(), pIn.m_obj_data, pIn.m_obj_data+pIn.m_obj_num);
     LidarTracking lidarT(pinSet); //建立雷达追踪一帧
-    LidarTracking lidarN = lidarT.bipartite(sinSet);  //追踪下一帧，返回追踪的结果
-    State x[N];
-    Control u[N];
-    Kalman::UnscentedKalmanFilter<State> ukf[300];
-    SystemModel sys;
-    PositionMeasurementModel pmm;
-    lidarN.tracking(x, u, ukf, sys, pmm);
+    lidarT.tracking(sinSet);  //追踪下一帧，返回追踪的结果
     
     return 0;
 }

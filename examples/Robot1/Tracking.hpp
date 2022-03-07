@@ -56,14 +56,6 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
-struct searchEdge {
-    int left, right;
-    searchEdge(int l, int r) {left = l; right = r;}
-    bool operator() (WeightedBipartiteEdge &edge) {
-        return (edge.left == left && edge.right == right);
-    }
-};
-
 /**
  * @brief 数据格式转换
  * 
@@ -103,7 +95,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
             if (dl < threshold_)
-            edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
+                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
         }
     }
     return edges;
@@ -121,6 +113,10 @@ public:
     LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in), matching_(0), left_unmatch_(0), right_unmatch_(0) {
         // 构造里目标ID固定了，新目标要顺序编号
         threshold_ = 1.0f;
+        for (int i = 0; i < N; ++i) {
+            x_[i].setZero();
+            u_[i].setZero();
+        }
     }
     /**
      * @brief 二分图算法匹配，第三方算法。
@@ -129,265 +125,108 @@ public:
      * @return LidarTracking 新对象包含所有的点云目标
      * 
      */
-    void bipartite(std::vector<PV_OBJ_DATA> &in) {
+    void tracking(std::vector<PV_OBJ_DATA> &in) {
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
-        kalmanTracking();
-        for (int i = 0; i < matching.size(); ++i) {
-            // i map to matching[i]
-        }
-        kalmanPredict(prevTargets_);
         int max_id = 0;
         for (PV_OBJ_DATA &obj : prevTargets_) {
+            int right = matching[obj.index];
+            if (right >= 0)
+                kalmanProcess(obj, in[right]);
+            else
+                kalmanProcess(obj);
+            max_id = max_id < obj.index ? obj.index : max_id;
+        }
         int right[N] = {-1};
         for (int &id : matching) {
             right[id] = id;
         }
-        for (int i = 0; i < in.size(); ++i) {
-            if (right[i] == -1 ) { //新目标
-                in[i].index = max_id;
-                prevTargets_.push_back(in[i]);
+        for (auto &obj : in) {
+            if (right[obj.index] == -1 ) { //新目标
+                obj.index = max_id;
+                prevTargets_.push_back(obj);
                 max_id += 1;
 
                 //新目标，还需要其它信息计算变化量
-                x[tar.index] << data.x_pos, data.y_pos, data.z_pos,
-                                data.length, data.width, data.height,
-                                data.intensity;
-                u[tar.index].setZero(); // Kalman对象还没有控制变量
-                ukf[tar.index].init(x[tar.index]);
+                x_[obj.index] << obj.x_pos, obj.y_pos, obj.z_pos,
+                                obj.length, obj.width, obj.height,
+                                obj.intensity;
+                u_[obj.index].setZero(); // Kalman对象还没有控制变量
+                ukf_[obj.index].init(x_[obj.index]);
             }
-        }
-    }
-    void kalmanPredict(std::vector<int> matching ) {
-        for (PV_OBJ_DATA &obj : prevTargets_) {
-            if (matching[obj.index] >= 0) {    //有匹配了，要Kalman预测与更新，此处融合
-                obj.x_speed= in[matching[obj.index]].x_pos - obj.x_pos;
-                obj.y_speed= in[matching[obj.index]].y_pos - obj.y_pos;
-                obj.z_speed= in[matching[obj.index]].z_pos - obj.z_pos;
-                obj.x_pos = in[matching[obj.index]].x_pos;
-                obj.y_pos = in[matching[obj.index]].y_pos;
-                obj.z_pos = in[matching[obj.index]].z_pos;
-                obj.length = in[matching[obj.index]].length;
-                obj.width = in[matching[obj.index]].width;
-                obj.height = in[matching[obj.index]].height;
-                obj.intensity = in[matching[obj.index]].intensity;
-
-                u_[obj.index].dx = in[matching[obj.index]].x_pos - obj.x_pos;
-                u_[obj.index].dy = in[matching[obj.index]].y_pos - obj.y_pos;
-                u_[obj.index].dz = in[matching[obj.index]].z_pos - obj.z_pos;
-                u_[obj.index].dl = in[matching[obj.index]].length - obj.length;
-                u_[obj.index].dw = in[matching[obj.index]].width - obj.width;
-                u_[obj.index].dh = in[matching[obj.index]].height - obj.height;
-                u_[obj.index].di = in[matching[obj.index]].intensity - obj.intensity;
-            }
-            max_id = max_id < obj.index ? obj.index : max_id;
         }
     }
     /**
-     * @brief Lidar目标更新自己对应的Kalman对象
+     * @brief 通过Kalman预测更新目标，同时预测+1
      * 
-     * @param objs Kalman对象
+     * @param obj 目标
      */
-    void tracking(State x[], Control u[], Kalman::UnscentedKalmanFilter<State> ukf[], SystemModel &sys, PositionMeasurementModel &pmm)
+    void kalmanProcess(PV_OBJ_DATA &obj)
     {
-        // Lidar目标
-        for (auto &tar : prevTargets_) {
-            assert(tar.index < 300);
+        x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
+        obj.x_speed = u_[obj.index].dx;
+        obj.y_speed = u_[obj.index].dy;
+        obj.z_speed = u_[obj.index].dz;
+        obj.x_pos = x_[obj.index].x_pos;
+        obj.y_pos = x_[obj.index].y_pos;
+        obj.z_pos = x_[obj.index].z_pos;
+        predict_[obj.index] += 1;
+    }
+    /**
+     * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
+     * 
+     * @param left 上一次目标
+     * @param right 当前目标
+     */
+    void kalmanProcess(PV_OBJ_DATA &left, PV_OBJ_DATA &right)
+    {
+        //按照Lidar更新目标
+        obj.x_speed= right.x_pos - left.x_pos;
+        left.y_speed= right.y_pos - left.y_pos;
+        left.z_speed= right.z_pos - left.z_pos;
+        left.x_pos = right.x_pos;
+        left.y_pos = right.y_pos;
+        left.z_pos = right.z_pos;
+        left.length = right.length;
+        left.width = right.width;
+        left.height = right.height;
+        left.intensity = right.intensity;
 
-            if (right_unmatch_.end() != std::find(right_unmatch_.begin(), right_unmatch_.end(), tar.index) {
-                //新目标，还需要其它信息计算变化量
-                x[tar.index] << data.x_pos, data.y_pos, data.z_pos,
-                                data.length, data.width, data.height,
-                                data.intensity;
-                u[tar.index].setZero(); // Kalman对象还没有控制变量
-                ukf[tar.index].init(x[tar.index]);
-            }
-            else {  //旧目标
-                // 旧目标的预测
-                x[tar.index] = ukf.predict(sys[tar.index], u[tar.index]);
-                if (left_unmatch_.end() != std::find(left_unmatch_.begin(), left_unmatch_.end(), tar.index) {
-                    // 目标要更新
-                    tar.intensity = it->x.intensity();
-                    tar.x_pos = it->x.x();
-                    tar.y_pos = it->x.y();
-                    tar.z_pos = it->x.z();
-                    tar.length = it->x.length();
-                    tar.width = it->x.width();
-                    tar.height = it->x.height();
-                }
-                else { // 旧目标的更新
-                    PositionMeasurement meas << data.x_pos, data.y_pos, data.z_pos,
-                                                data.length, data.width, data.height,
-                                                data.intensity;
-                    x[tar.index] = utf.update(pmm, meas);
-                    //TODO  还要更新控制变量
-                }
-            }
-        }
+        //更新目标的控制
+        u_[left.index].dx = right.x_pos - left.x_pos;
+        u_[left.index].dy = right.y_pos - left.y_pos;
+        u_[left.index].dz = right.z_pos - left.z_pos;
+        u_[left.index].dl = right.length - left.length;
+        u_[left.index].dw = right.width - left.width;
+        u_[left.index].dh = right.height - left.height;
+        u_[left.index].di = right.intensity - left.intensity;
+
+        //对应Kalman的预测与更新
+        x_[left.index] = ukf_[left.index].predict(sys_, u_[left.index]);
+        PositionMeasurement measure << left.x_pos, left.y_pos, left.z_pos,
+                                    left.length, left.width, left.height,
+                                    left.intensity;
+        x_[left.index] = ukf_[left.index].update(pmm_, measure);
+        predict_[left.index] = 0;
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
-    std::vector<int> matching_;
     float threshold_;
 
 private:
-    struct copyID {
-        copyID(const std::vector<int> &ids):ids_(ids) {}
-        bool operator() (const PV_OBJ_DATA &data) {
-            return ids_.end() != std::find(ids_.begin(), ids_.end(), data.index);
-        }
-        std::vector<int> ids_;
-    };
-    struct searchPV {
-        searchPV(int id):id_(id) {}
-        bool operator() (const PV_OBJ_DATA &data) {
-            return data.index == id_;
-        }
-        int id_;
-    };
-private:
-    /**
-     * @brief 统计边中左节点的数量（去重）
-     * 
-     * @param edges 边对象
-     * @return int  左节点数量
-     */
-    int leftNodes(const std::vector<WeightedBipartiteEdge> &edges)
-    {
-        // 记录边集索引
-        int left[N]={-1};
-        // left中有效节点的数量
-        int left_num = 0;
-        // 清理边集的索引关系
-        for (auto &e : edges) {
-            if (left[e.left] < 0) {
-                left[e.left] = e.left;
-                left_num += 1;
-            }
-        }
-        return left_num;
-    }
-};
-/**
- * @brief Kalman对象包装Kalman UKF的实现，保留ID（其实也可以不保留）
- * 
- * 
- */
-class KalmanObject {
-public:
-    KalmanObject():ukf(1) {
-        predict_num = 0;
-        x.setZero();
-        u.setZero();
-    }
-    KalmanObject(const PV_OBJ_DATA &data)
-    {
-        x <<  data.x_pos, data.y_pos, data.z_pos,
-              data.length, data.width, data.height,
-              data.intensity;
-        //u << 变化量怎么计算呢？
-    }
-    State predict() {   //所有目标可以先行预测
-        predict_num += 1;
-        x = ukf.predict(sys, u);
-        return x;
-    }
-    State update(PositionMeasurement &me) {
-        predict_num = 0;
-        x = ukf.update(pm, me);
-        return x;
-    }
-    void updateCtrl() {
-       // 刷新控制 
-    }
-private:
-    int predict_num;
-    State x;
-    Control u;
-    Kalman::UnscentedKalmanFilter<State> ukf;
-    // Kalman只是概念对象，映射到实际目标
-    // 通过ID号
-    // System
+    int predict_[N];
+    State x_[N];
+    Control u_[N];
+    Kalman::UnscentedKalmanFilter<State> ukf_[N];
     // 系统是整个场景一个系统
-    SystemModel sys;
+    SystemModel sys_;
     // Measurement models
-    // Set position landmarks at (-10, -10) and (30, 75)
-    PositionModel pm;
+    PositionMeasurementModel pmm_;
 };
-
-    /*
-
-bool ProcessData() //const QByteArray &in, QByteArray &out)
-{
-    SIn* pIn; // = (SIn*)(in.data());
-    std::vector<PV_OBJ_DATA> inSet;
-    // 加入Set并按照index排序
-    inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
-    inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
-    // TODO 左边与右边数量不一致会怎样？
-    // TODO 左边多个节点会连接到右边一个节点吗？
-    std::map<int, KalmanObj> kalman_map;
-    // 处理完成得到3个集合，left, right, 和上面的matching
-    // 对matching做Kalman预测与更新
-    for (std::pair &pa : lr_match) {
-        KalmanObj &obj = kalman_map.find(pa.first);
-        obj.x = obj.ukf.predict(sys, obj.u);
-        PV_OBJ_DATA pvData = inSet.find(pa.second);  //新输入点云数据
-        // 转换观测状态
-        PositionMeasurement px = convert(pvData);
-        obj.x = obj.ukf.update(pm, px);
-        // TODO 返回上层结果
-    }
-    // 对left做Kalman预测
-    for (int &id : left_unmatch) {
-        KalmanObj &obj = kalman_map.find(pa.first);
-        obj.x = obj.ukf.predict(sys, obj.u);
-        obj.predict_num += 1;
-        // TODO 返回上层结果
-    }
-    // 对right做新建目标
-    for (int &id : right_unmatch) {
-        kalman_map.insert(std::make_pair(id, KalmanObj));
-    }
-    State x;
-    x << prev.width...;
-    // Control input
-    // 控制量在进场时才应该是0
-    Control u;
-    u.setZero();
-    
-    // OrientationModel om; 没有方位模型
-    Kalman::UnscentedKalmanFilter<State> ukf(1);
-    ukf.init(x);
-    // Predict state for current time-step using the filters
-    // auto x_pred = predictor.predict(sys, u);
-    // auto x_ekf = ekf.predict(sys, u);
-    auto x_ukf = ukf.predict(sys, u); //预测了下一帧的状态
-        // Position measurement
-        {
-            // Lidar结果就是观测状态，它和目标状态对应的，不需要做进一步转换
-            // We can measure the position every 10th step
-            // 下一帧的状态转换成观测状态
-            // Lidar数据直接转成观测状态，h()还是需要将目标状态转换成观测状态（内部使用）
-            PositionMeasurement position = pm.h(x);
-            
-            // Measurement is affected by noise as well
-            position.d1() += distanceNoise * noise(generator);
-            position.d2() += distanceNoise * noise(generator);
-            
-            // Update EKF
-            // x_ekf = ekf.update(pm, position);
-            
-            // Update UKF
-            // 观测状态对照的是预测后的状态了
-            x_ukf = ukf.update(pm, position);
-        }
-    return true;
-}*/
 
 } // namespace KalmanTracking
 
