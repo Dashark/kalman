@@ -95,7 +95,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             std::cout << "target distance: " << d1 << std::endl;
             // 构造所有边的权重
             if (dl < threshold_)
-                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, nextSet[j].index, d1) );
+                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
         }
     }
     return edges;
@@ -125,7 +125,7 @@ public:
      * @return LidarTracking 新对象包含所有的点云目标
      * 
      */
-    void tracking(std::vector<PV_OBJ_DATA> &in) {
+    void tracking(const std::vector<PV_OBJ_DATA> &in) {
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
