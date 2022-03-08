@@ -64,9 +64,9 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         }
         else {
             lidar_->tracking(inSet);
-            lidar_->output(pOut1->m_obj_data, pOut->m_obj_num);
+            lidar_->output(pOut->m_obj_data, (pOut->m_obj_num));
             qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
-            pOut1->m_time_ms = timestamp;
+            pOut->m_time_ms = timestamp;
         }
 
         // 多个输出，不通过out将数据输出
@@ -86,7 +86,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         if (!m_pInterfaceManager->QueryInterface("IDataDispatcher", (void**)&pDataDispatcher)) break;
 
         // 这里，是进程内，插件间的数据分离，直接使用数据分发器，不通过共享内存
-        pDataDispatcher->Dispatch("SOut", out1);
+        pDataDispatcher->Dispatch("SOut", out);
         //pDataDispatcher->Dispatch("SOut2", out2);
 
 
