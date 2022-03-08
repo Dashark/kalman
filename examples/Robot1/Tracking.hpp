@@ -43,6 +43,13 @@ struct SIn {    // 输入的目标点云
     // int m_obj_point_count[300];   //第x个目标的点云的数量
     // PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
+struct SOut {
+    qint64 m_time_ms;             //消息时间戳
+    qint32 m_obj_num;             //有效目标数量
+    PV_OBJ_DATA m_obj_data[300];  //目标参数
+//    int m_obj_point_count[300];   //第x个目标的点云的数量
+//    PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
+};
 namespace KalmanTracking
 {
 
@@ -132,6 +139,15 @@ public:
             }
         }
     }
+    void output(PV_OBJ_DATA pOut[], uint &size)
+    {
+        int size = 0;
+        for (PV_OBJ_DATA &data : prevTargets_) {
+            pOut[size] = data;
+            size += 1;
+        }
+    }
+private:
     /**
      * @brief 通过Kalman预测更新目标，同时预测+1
      * 
