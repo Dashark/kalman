@@ -45,7 +45,7 @@ struct SIn {    // 输入的目标点云
 };
 struct SOut {
     int64_t m_time_ms;             //消息时间戳
-    qint32 m_obj_num;             //有效目标数量
+    int32_t m_obj_num;             //有效目标数量
     PV_OBJ_DATA m_obj_data[300];  //目标参数
 //    int m_obj_point_count[300];   //第x个目标的点云的数量
 //    PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
