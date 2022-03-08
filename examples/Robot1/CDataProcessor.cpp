@@ -1,6 +1,7 @@
 #include "CDataProcessor.h"
 #include "CPluginContext.h"
 #include <QJsonObject>
+#include <QDateTime>
 #include <QJsonValue>
 #include "IDataDispatcher.h"
 
@@ -55,8 +56,8 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
         std::vector<PV_OBJ_DATA> inSet;
-        QByteArray out1(sizeof(SOut1), '\0');
-        SOut1* pOut1 = (SOut1*)out1.data();
+        QByteArray out(sizeof(SOut), '\0');
+        SOut* pOut = (SOut*)out.data();
         // 加入Set并按照index排序
         inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
         if (lidar_ == nullptr) {
@@ -64,7 +65,9 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         }
         else {
             lidar_->tracking(inSet);
-            lidar_->output(pOut->m_obj_data, (pOut->m_obj_num));
+            uint size;
+            lidar_->output(pOut->m_obj_data, size);
+            pOut->m_obj_num = size;
             qint64 timestamp = QDateTime::currentMSecsSinceEpoch();
             pOut->m_time_ms = timestamp;
         }
