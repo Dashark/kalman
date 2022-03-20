@@ -25,7 +25,7 @@ private:
     CPluginContext* m_pContext{nullptr};
     IInterfaceManager* m_pInterfaceManager{nullptr};
 
-    int m_param{0};
+    float m_param{0.0f};
     KalmanTracking::LidarTracking *lidar_;
 };
 

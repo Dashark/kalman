@@ -145,6 +145,9 @@ public:
         for (PV_OBJ_DATA &data : prevTargets_) {
             pOut[size] = data;
             size += 1;
+            if (size > N) {
+                break;
+            }
         }
     }
 private:

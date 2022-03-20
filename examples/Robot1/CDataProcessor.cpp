@@ -12,7 +12,7 @@ CDataProcessor::CDataProcessor(CPluginContext *pContext, IInterfaceManager *pInt
 {
     // TOOD: 算法本身，需要在这里，从插件的配置文件中，将需要的参数解析出来，
     //       存成成员变量，以便在 ProcessData 函数中使用
-    m_param = m_pContext->GetConfigValue("param").toInt();
+    m_param = m_pContext->GetConfigValue("TargetThreshold").toFloat();
     lidar_ = nullptr;
 }
 
@@ -61,7 +61,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         // 加入Set并按照index排序
         inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
         if (lidar_ == nullptr) {
-            lidar_ = new KalmanTracking::LidarTracking(inSet);
+            lidar_ = new KalmanTracking::LidarTracking(inSet,m_param);
         }
         else {
             lidar_->tracking(inSet);
