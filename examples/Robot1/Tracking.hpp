@@ -88,9 +88,9 @@ Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
  */
 class LidarTracking {
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in) : prevTargets_(in) {
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in) {
         // 构造里目标ID固定了，新目标要顺序编号
-        threshold_ = 1.0f;
+        threshold_ = threshold;
         for (int i = 0; i < N; ++i) {
             x_[i].setZero();
             u_[i].setZero();
@@ -229,16 +229,8 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     // 当前目标 next 与上一次目标 prev 的特征距离
     std::vector<WeightedBipartiteEdge> edges;
     for (size_t i = 0; i < prevSet.size(); ++i) {
-        Kalman::Vector<float, 10> prevTarget = toVector(prevSet[i]);
         for (size_t j = 0; j < nextSet.size(); ++j) {
-            PV_OBJ_DATA temp = nextSet[j];
-            temp.x_speed = temp.x_pos - prevSet[i].x_pos;
-            temp.y_speed = temp.y_pos - prevSet[i].y_pos;
-            temp.z_speed = temp.z_pos - prevSet[i].z_pos;
-            Kalman::Vector<float, 10> nextTarget = toVector(temp);
-            Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
-            float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-            std::cout << "target distance: " << d1 << std::endl;
+            float d1 = eucDistance(prevSet[i], nextSet[j]); //std::sqrt( delta.dot(delta) ); //计算向量距离
             // 构造所有边的权重
             if (d1 < threshold_)
                 edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
@@ -247,9 +239,19 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     return edges;
 }
 
-void eucDistance()
+float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 {
     // 欧氏距离
+    Kalman::Vector<float, 10> prevTarget = toVector(left);
+    PV_OBJ_DATA temp = right;
+    temp.x_speed = temp.x_pos - left.x_pos;
+    temp.y_speed = temp.y_pos - left.y_pos;
+    temp.z_speed = temp.z_pos - left.z_pos;
+    Kalman::Vector<float, 10> nextTarget = toVector(temp);
+    Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
+    float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
+    std::cout << "target distance: " << d1 << std::endl;
+    return d1;
 }
 
 void mahDistance()
