@@ -247,6 +247,19 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     return edges;
 }
 
+void eucDistance()
+{
+    // 欧氏距离
+}
+
+void mahDistance()
+{
+    // 马氏距离
+    // 有N个观测样本了，求样本向量的协方差矩阵
+    // 最新样本与当前样本的目标求马氏距离
+    // 最新样本加入样本集重新计算协方差矩阵？有简单方法吗？
+    // 每个目标都加入样本矩阵（不可能无限制）
+}
 };
 
 } // namespace KalmanTracking
