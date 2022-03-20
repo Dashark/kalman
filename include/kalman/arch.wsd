@@ -1,23 +1,20 @@
 @startuml
-interface Command {
-    execute()
-    undo()
+class Covariance <<StateType>>
+class StandardBase <<StateType>>{ 
+    #P:Covariance<StateType>
 }
-class Invoker{
-    setCommand()
-}
-class Client
-class Receiver{
+class SystemModel
+class LinearizedSystemModel{
     action()
 }
-class ConcreteCommand{
-    execute()
-    undo()
-}
+StandardBase *-- Covariance
+StandardBase <|-down- SystemModel
+SystemModel <|-down- LinearizedSystemModel
 
-Command <|-down- ConcreteCommand
-Client -right-> Receiver
-Client --> ConcreteCommand
-Invoker o-right-> Command
-Receiver <-left- ConcreteCommand
+class KalmanFilterBase
+class StandardFilterBase
+StandardBase <|-down- StandardFilterBase
+class ExtendedKalmanFilter
+KalmanFilterBase <|-down- ExtendedKalmanFilter
+StandardFilterBase <|-down- ExtendedKalmanFilter
 @enduml
