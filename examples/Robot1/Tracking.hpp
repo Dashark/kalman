@@ -254,13 +254,16 @@ float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     return d1;
 }
 
-void mahDistance()
+float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 {
+    Kalman::Covariance<Kalman::Vector<float, 10>> sigma;
+    sigma.setIdentity();
     // 马氏距离
     // 有N个观测样本了，求样本向量的协方差矩阵
     // 最新样本与当前样本的目标求马氏距离
     // 最新样本加入样本集重新计算协方差矩阵？有简单方法吗？
     // 每个目标都加入样本矩阵（不可能无限制）
+    return 0.0f;
 }
 };
 
