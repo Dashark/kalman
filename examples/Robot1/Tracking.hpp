@@ -289,6 +289,32 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 }
 };
 
+class NoneTracking : public LidarTracking
+{
+  public:
+    NoneTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in)
+    {
+        (void)threshold;
+    }
+    void tracking(const std::vector<PV_OBJ_DATA> &in)
+    {
+        prevTargets_ = in;
+    }
+    void output(PV_OBJ_DATA pOut[], uint &size)
+    {
+        size = 0;
+        for (PV_OBJ_DATA &data : prevTargets_) {
+            pOut[size] = data;
+            size += 1;
+            if (size > N) {
+                break;
+            }
+        }
+    }
+  private:
+    std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
+
+};
 } // namespace KalmanTracking
 
 #endif
