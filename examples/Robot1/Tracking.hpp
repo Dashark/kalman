@@ -10,7 +10,7 @@
 #include <kalman/UnscentedKalmanFilter.hpp>
 
 #include "BipartiteHungarian.h"
-
+#include <QDebug>
 typedef struct {
     float x;        //精度 10微米
     float y;        //精度 10微米
@@ -21,7 +21,8 @@ typedef struct {
 //目标检测结果数据
 typedef struct {
     uint index;             // 目标临时编号
-    float intensity;        // 目标激光强度总和
+    char redis_key[40];     // UUID
+    int intensity;        // 目标激光强度总和
     float width;            // 精度：0.01m
     float length;           // 精度：0.01m
     float height;           // 精度：0.01m
@@ -63,32 +64,19 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
-/**
- * @brief 数据格式转换
- * 
- * @param data 自定义数据
- * @return Kalman::Vector<float, 10> Eigen的向量
- */
-Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
-    Kalman::Vector<float, 10> target;
-    target << data.width, data.length, data.height,
-              data.x_pos, data.y_pos, data.z_pos,
-              data.x_speed, data.y_speed, data.z_speed,
-              data.intensity;
-    return target;
-}
 
 
-#define N 300
+
 /**
  * @brief 基于Lidar的跟踪。
  * 两帧点云按照特征距离建立先后关系
  * 点云目标的ID逻辑也在其中
- * 
+ *
  */
 class LidarTracking {
+    const static int N = 300;
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in) {
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0) {
         // 构造里目标ID固定了，新目标要顺序编号
         threshold_ = threshold;
         for (int i = 0; i < N; ++i) {
@@ -98,10 +86,10 @@ public:
     }
     /**
      * @brief 二分图算法匹配，第三方算法。
-     * 
+     *
      * @param in 当前帧的点云目标
      * @return LidarTracking 新对象包含所有的点云目标
-     * 
+     *
      */
     void tracking(const std::vector<PV_OBJ_DATA> &in) {
         // 匹配最优的目标组合
@@ -119,16 +107,17 @@ public:
                 kalmanProcess(obj);
             max_id = max_id < obj.index ? obj.index : max_id;
         }
-        int right[N] = {-1};
+        std::vector<int> right(N, -1);
         for (int &id : matching) {
-            right[id] = id;
+            if (id != -1)
+                right[id] = id;
         }
         for (auto &obj : in) {
             if (right[obj.index] == -1 ) { //新目标
+                max_id += 1;
                 PV_OBJ_DATA temp = obj;
                 temp.index = max_id;
                 prevTargets_.push_back(temp);
-                max_id += 1;
 
                 //新目标，还需要其它信息计算变化量
                 x_[temp.index] << obj.x_pos, obj.y_pos, obj.z_pos,
@@ -138,6 +127,7 @@ public:
                 ukf_[temp.index].init(x_[temp.index]);
             }
         }
+        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
     }
     void output(PV_OBJ_DATA pOut[], uint &size)
     {
@@ -151,9 +141,23 @@ public:
         }
     }
 private:
+    struct removeKalman {
+        removeKalman(std::vector<int> *pred) {
+            preds = pred;
+        }
+        bool operator() (const PV_OBJ_DATA &data)
+        {
+            if ((*preds)[data.index] > 10) {
+                (*preds)[data.index] = 0;
+                return true;
+            }
+            return false;
+        }
+        std::vector<int> *preds;
+    };
     /**
      * @brief 通过Kalman预测更新目标，同时预测+1
-     * 
+     *
      * @param obj 目标
      */
     void kalmanProcess(PV_OBJ_DATA &obj)
@@ -165,11 +169,11 @@ private:
         obj.x_pos = x_[obj.index].x();
         obj.y_pos = x_[obj.index].y();
         obj.z_pos = x_[obj.index].z();
-        predict_[obj.index] += 1;
+        predicts_[obj.index] += 1;
     }
     /**
      * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
-     * 
+     *
      * @param left 上一次目标
      * @param right 当前目标
      */
@@ -203,14 +207,14 @@ private:
                     left.length, left.width, left.height,
                     left.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
-        predict_[left.index] = 0;
+        predicts_[left.index] = 0;
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
     float threshold_;
 
 private:
-    int predict_[N];
+    std::vector<int> predicts_;
     State x_[N];
     Control u_[N];
     Kalman::UnscentedKalmanFilter<State> ukf_[N];
@@ -222,7 +226,7 @@ private:
 private:
 /**
  * @brief Create a Edges object
- * 
+ *
  * @param prevSet 前一次观测目标
  * @param nextSet 后一次观测目标
  * @return std::vector<WeightedBipartiteEdge> 目标之间匹配的距离
@@ -241,6 +245,20 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     }
     return edges;
 }
+/**
+ * @brief 数据格式转换
+ *
+ * @param data 自定义数据
+ * @return Kalman::Vector<float, 10> Eigen的向量
+ */
+Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
+    Kalman::Vector<float, 10> target;
+    target << data.width, data.length, data.height,
+              data.x_pos, data.y_pos, data.z_pos,
+              data.x_speed, data.y_speed, data.z_speed,
+              data.intensity;
+    return target;
+}
 
 float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 {
@@ -253,7 +271,8 @@ float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     Kalman::Vector<float, 10> nextTarget = toVector(temp);
     Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
     float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-    std::cout << "target distance: " << d1 << std::endl;
+    //std::cout << "target distance: " << d1 << std::endl;
+    qDebug("target distance : %f", d1);
     return d1;
 }
 
