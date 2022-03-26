@@ -194,6 +194,7 @@ private:
         obj.y_pos = x_[obj.index].y();
         obj.z_pos = x_[obj.index].z();
         predicts_[obj.index] += 1;
+        obj.predicts = 0;  // 雷达目标丢失，重新才跟踪
     }
     /**
      * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
