@@ -35,6 +35,7 @@ typedef struct {
     float y_speed;            // 精度：0.01m/s
     float z_speed;            // 精度：0.01m/s
 
+    int predicts;           // 目标的预测次数
 } PV_OBJ_DATA;
 
 struct SIn {    // 输入的目标点云
@@ -98,14 +99,12 @@ public:
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
-        uint max_id = 0;
         for (PV_OBJ_DATA &obj : prevTargets_) {
             int right = matching[obj.index];
             if (right >= 0)
                 kalmanProcess(obj, in[right]);
             else
                 kalmanProcess(obj);
-            max_id = max_id < obj.index ? obj.index : max_id;
         }
         std::vector<int> right(N, -1);
         for (int &id : matching) {
@@ -114,10 +113,8 @@ public:
         }
         for (auto &obj : in) {
             if (right[obj.index] == -1 ) { //新目标
-                max_id += 1;
-                max_id %= N;
                 PV_OBJ_DATA temp = obj;
-                temp.index = max_id;
+                temp.index = slotForNewKalman();
                 prevTargets_.push_back(temp);
 
                 //新目标，还需要其它信息计算变化量
@@ -129,6 +126,7 @@ public:
             }
         }
         prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
+        std::sort(prevTargets_.begin(), prevTargets_end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
     }
     void output(PV_OBJ_DATA pOut[], uint &size)
     {
@@ -160,6 +158,7 @@ private:
                 slot = obj.index;
             }
         }
+        if ((slot + 1) < N) return slot + 1;
         return -1;
     }
     /**
