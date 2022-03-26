@@ -232,13 +232,14 @@ private:
                     left.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
         predicts_[left.index] = 0;
+        left.predicts += 1;
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
     float threshold_;
 
 private:
-    std::vector<int> predicts_;
+    std::vector<int> predicts_;  // 纯粹的Kalman预测
     State x_[N];
     Control u_[N];
     Kalman::UnscentedKalmanFilter<State> ukf_[N];
@@ -295,8 +296,6 @@ float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     Kalman::Vector<float, 10> nextTarget = toVector(temp);
     Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
     float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
-    //std::cout << "target distance: " << d1 << std::endl;
-    qDebug("target distance : %f", d1);
     return d1;
 }
 
