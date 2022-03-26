@@ -91,7 +91,7 @@ public:
      * @return LidarTracking 新对象包含所有的点云目标
      *
      */
-    void tracking(const std::vector<PV_OBJ_DATA> &in) {
+    virtual void tracking(const std::vector<PV_OBJ_DATA> &in) {
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
@@ -141,6 +141,30 @@ public:
         }
     }
 private:
+    /**
+     * @brief 在0~300的序号选择一个没有使用的
+     * TODO 假设目标是递增排列的
+     * 
+     * @return int 选中一个。-1 表示没有空位
+     */
+    int slotForNewKalman()
+    {
+        int slot = 0;
+        for (PV_OBJ_DATA &obj : prevTargets_) {
+            int temp = obj.index - slot;
+            if (temp > 1)  {// 2个目标之间存在空位
+                return slot + 1;
+            }
+            else {
+                slot = obj.index;
+            }
+        }
+        return -1;
+    }
+    /**
+     * @brief Function Object for 清除队列中无效的Kalman对象
+     * 
+     */
     struct removeKalman {
         removeKalman(std::vector<int> *pred) {
             preds = pred;
