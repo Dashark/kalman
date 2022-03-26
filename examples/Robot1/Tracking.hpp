@@ -115,6 +115,7 @@ public:
         for (auto &obj : in) {
             if (right[obj.index] == -1 ) { //新目标
                 max_id += 1;
+                max_id %= N;
                 PV_OBJ_DATA temp = obj;
                 temp.index = max_id;
                 prevTargets_.push_back(temp);
