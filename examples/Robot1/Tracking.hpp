@@ -35,7 +35,7 @@ typedef struct {
     float y_speed;            // 精度：0.01m/s
     float z_speed;            // 精度：0.01m/s
 
-    int predicts;           // 目标的预测次数
+    int track_times{0};           // 目标的预测次数
 } PV_OBJ_DATA;
 
 struct SIn {    // 输入的目标点云
@@ -194,7 +194,7 @@ private:
         obj.y_pos = x_[obj.index].y();
         obj.z_pos = x_[obj.index].z();
         predicts_[obj.index] += 1;
-        obj.predicts = 0;  // 雷达目标丢失，重新才跟踪
+        obj.track_times = 0;  // 雷达目标丢失，重新才跟踪
     }
     /**
      * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
@@ -233,7 +233,7 @@ private:
                     left.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
         predicts_[left.index] = 0;
-        left.predicts += 1;
+        left.track_times += 1;
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
