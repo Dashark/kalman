@@ -205,15 +205,15 @@ private:
     void kalmanProcess(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     {
         //按照Lidar更新目标
-        left.x_speed= right.x_pos - left.x_pos;
-        left.y_speed= right.y_pos - left.y_pos;
-        left.z_speed= right.z_pos - left.z_pos;
+        left.x_speed = (left.x_speed + right.x_pos - left.x_pos) / 2;
+        left.y_speed= (left.y_speed + right.y_pos - left.y_pos) / 2;
+        left.z_speed= (left.z_speed + right.z_pos - left.z_pos) / 2;
         left.x_pos = right.x_pos;
         left.y_pos = right.y_pos;
         left.z_pos = right.z_pos;
-        left.length = right.length;
-        left.width = right.width;
-        left.height = right.height;
+        left.length = (left.length + right.length) / 2;
+        left.width = (left.width + right.width) / 2;
+        left.height = (left.height + right.height) / 2;
         left.intensity = right.intensity;
 
         //更新目标的控制
