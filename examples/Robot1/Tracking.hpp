@@ -126,7 +126,7 @@ public:
             }
         }
         prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
-        std::sort(prevTargets_.begin(), prevTargets_end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
+        std::sort(prevTargets_.begin(), prevTargets_.end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
     }
     void output(PV_OBJ_DATA pOut[], uint &size)
     {
@@ -315,6 +315,7 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 
 class NoneTracking : public LidarTracking
 {
+    const static int N = 300;
   public:
     NoneTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in)
     {
