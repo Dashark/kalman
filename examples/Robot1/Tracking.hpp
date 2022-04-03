@@ -96,10 +96,10 @@ public:
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
+        // TODO 当右少左多时表示有目标丢失，左边的哪个该丢弃？？？
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
-
         for (PV_OBJ_DATA &obj : prevTargets_) {
             int right = matching[obj.index];
             if (right >= 0) {
@@ -118,6 +118,7 @@ public:
             if (right[obj.index] == -1 ) { //新目标
                 PV_OBJ_DATA temp = obj;
                 temp.index = slotForNewKalman();
+                if (temp.index < 0) continue;   //没有空位则丢弃目标
                 prevTargets_.push_back(temp);
 
                 //新目标，还需要其它信息计算变化量
@@ -151,18 +152,18 @@ private:
      */
     int slotForNewKalman()
     {
-        int slot = 0;
+        std::vector<int> slots(N, 0);  // N 个位子
+        // 初始化位子
         for (PV_OBJ_DATA &obj : prevTargets_) {
-            int temp = obj.index - slot;
-            if (temp > 1)  {// 2个目标之间存在空位
-                return slot + 1;
-            }
-            else {
-                slot = obj.index;
-            }
+            assert(obj.index < N);   // 绝对不会超过 N 个目标
+            slots[obj.index] = obj.index;  // 占位子
         }
-        if ((slot + 1) < N) return slot + 1;
-        return -1;
+        // 挑选空位子
+        for (int i = 0; i < N; ++i) {
+            if (slots[i] == 0)
+                return i;
+        }
+        return -1; // 没有空位
     }
     /**
      * @brief Function Object for 清除队列中无效的Kalman对象
