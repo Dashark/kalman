@@ -76,8 +76,10 @@ typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
  */
 class LidarTracking {
     const static int N = 300;
+    static int frames;
 public:
     LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0) {
+        frames = 0;
         // 构造里目标ID固定了，新目标要顺序编号
         threshold_ = threshold;
         for (int i = 0; i < N; ++i) {
@@ -93,6 +95,7 @@ public:
      *
      */
     virtual void tracking(const std::vector<PV_OBJ_DATA> &in) {
+        frames += 1;
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
@@ -105,9 +108,13 @@ public:
             if (right >= 0) {
                 kalmanProcess(obj, in[right]);
                 memcpy(obj.redis_key, in[right].redis_key, 40);
+                dumpObj(obj, "Old-track");
+                dumpObj(in[right], "New-track");
             }
-            else
+            else {
                 kalmanProcess(obj);
+                dumpObj(obj, "Old-pred");
+            }
         }
         std::vector<int> right(N, -1);
         for (int &id : matching) {
@@ -119,6 +126,7 @@ public:
                 PV_OBJ_DATA temp = obj;
                 temp.index = slotForNewKalman();
                 prevTargets_.push_back(temp);
+                dumpObj(temp, "New-first");
 
                 //新目标，还需要其它信息计算变化量
                 x_[temp.index] << obj.x_pos, obj.y_pos, obj.z_pos,
@@ -143,6 +151,10 @@ public:
         }
     }
 private:
+    void dumpObj(const PV_OBJ_DATA &obj, char type[]) 
+    {
+        qDebug(",%d,%s,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d",frames,type, obj.index,obj.x_pos,obj.y_pos,obj.z_pos,obj.x_speed,obj.y_speed,obj.z_speed,obj.length,obj.width,obj.height,obj.intensity);
+    }
     /**
      * @brief 在0~300的序号选择一个没有使用的
      * TODO 假设目标是递增排列的
@@ -267,8 +279,9 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     for (size_t i = 0; i < prevSet.size(); ++i) {
         for (size_t j = 0; j < nextSet.size(); ++j) {
             float d1 = eucDistance(prevSet[i], nextSet[j]); //std::sqrt( delta.dot(delta) ); //计算向量距离
-            qDebug("%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
+            //qDebug(",%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
             //qInfo("%f",d1);
+            dumpObj(nextSet[j], "New-edges");
             // 构造所有边的权重
             if (d1 < threshold_)
                 edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
