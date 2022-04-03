@@ -99,7 +99,6 @@ public:
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
-        // TODO 当右少左多时表示有目标丢失，左边的哪个该丢弃？？？
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
@@ -166,15 +165,15 @@ private:
      */
     int slotForNewKalman()
     {
-        std::vector<int> slots(N, 0);  // N 个位子
+        std::vector<int> spots(N, 0);  // N 个位子
         // 初始化位子
         for (PV_OBJ_DATA &obj : prevTargets_) {
             assert(obj.index < N);   // 绝对不会超过 N 个目标
-            slots[obj.index] = obj.index;  // 占位子
+            spots[obj.index] = obj.index;  // 占位子
         }
         // 挑选空位子
         for (int i = 0; i < N; ++i) {
-            if (slots[i] == 0)
+            if (spots[i] == 0)
                 return i;
         }
         return -1; // 没有空位
