@@ -99,10 +99,13 @@ public:
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
         // 先做Kalman
+
         for (PV_OBJ_DATA &obj : prevTargets_) {
             int right = matching[obj.index];
-            if (right >= 0)
+            if (right >= 0) {
                 kalmanProcess(obj, in[right]);
+                memcpy(obj.redis_key, in[right].redis_key, 40);
+            }
             else
                 kalmanProcess(obj);
         }
@@ -194,7 +197,7 @@ private:
         obj.y_pos = x_[obj.index].y();
         obj.z_pos = x_[obj.index].z();
         predicts_[obj.index] += 1;
-        obj.track_times = 0;  // 雷达目标丢失，重新才跟踪
+        obj.track_times -= 1;  // 雷达目标丢失，重新才跟踪
     }
     /**
      * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
@@ -206,8 +209,8 @@ private:
     {
         //按照Lidar更新目标
         left.x_speed = (left.x_speed + right.x_pos - left.x_pos) / 2;
-        left.y_speed= (left.y_speed + right.y_pos - left.y_pos) / 2;
-        left.z_speed= (left.z_speed + right.z_pos - left.z_pos) / 2;
+        left.y_speed = (left.y_speed + right.y_pos - left.y_pos) / 2;
+        left.z_speed = (left.z_speed + right.z_pos - left.z_pos) / 2;
         left.x_pos = right.x_pos;
         left.y_pos = right.y_pos;
         left.z_pos = right.z_pos;
@@ -264,6 +267,8 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     for (size_t i = 0; i < prevSet.size(); ++i) {
         for (size_t j = 0; j < nextSet.size(); ++j) {
             float d1 = eucDistance(prevSet[i], nextSet[j]); //std::sqrt( delta.dot(delta) ); //计算向量距离
+            qDebug("%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
+            //qInfo("%f",d1);
             // 构造所有边的权重
             if (d1 < threshold_)
                 edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
@@ -271,31 +276,32 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     }
     return edges;
 }
+#define DIMS 3
 /**
  * @brief 数据格式转换
  *
  * @param data 自定义数据
  * @return Kalman::Vector<float, 10> Eigen的向量
  */
-Kalman::Vector<float, 10> toVector(const PV_OBJ_DATA &data) {
-    Kalman::Vector<float, 10> target;
-    target << data.width, data.length, data.height,
-              data.x_pos, data.y_pos, data.z_pos,
-              data.x_speed, data.y_speed, data.z_speed,
-              data.intensity;
+Kalman::Vector<float, DIMS> toVector(const PV_OBJ_DATA &data) {
+    Kalman::Vector<float, DIMS> target;
+    target << //data.width, data.length, data.height,
+              data.x_pos, data.y_pos, data.z_pos;
+              //data.x_speed, data.y_speed, data.z_speed,
+              //data.intensity;
     return target;
 }
 
 float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 {
     // 欧氏距离
-    Kalman::Vector<float, 10> prevTarget = toVector(left);
+    Kalman::Vector<float, DIMS> prevTarget = toVector(left);
     PV_OBJ_DATA temp = right;
     temp.x_speed = temp.x_pos - left.x_pos;
     temp.y_speed = temp.y_pos - left.y_pos;
     temp.z_speed = temp.z_pos - left.z_pos;
-    Kalman::Vector<float, 10> nextTarget = toVector(temp);
-    Kalman::Vector<float, 10> delta = nextTarget - prevTarget;
+    Kalman::Vector<float, DIMS> nextTarget = toVector(temp);
+    Kalman::Vector<float, DIMS> delta = nextTarget - prevTarget;
     float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
     return d1;
 }
@@ -317,7 +323,7 @@ class NoneTracking : public LidarTracking
 {
     const static int N = 300;
   public:
-    NoneTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in)
+    NoneTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : LidarTracking(in, threshold), prevTargets_(in)
     {
         (void)threshold;
     }
@@ -329,6 +335,7 @@ class NoneTracking : public LidarTracking
     {
         size = 0;
         for (PV_OBJ_DATA &data : prevTargets_) {
+            data.track_times = 20;
             pOut[size] = data;
             size += 1;
             if (size > N) {
