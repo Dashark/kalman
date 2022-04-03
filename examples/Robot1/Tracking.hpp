@@ -114,17 +114,20 @@ public:
             if (id != -1)
                 right[id] = id;
         }
-        for (auto &obj : in) {
-            if (right[obj.index] == -1 ) { //新目标
-                PV_OBJ_DATA temp = obj;
+        // for (auto &obj : in) {
+        for (size_t i = 0; i < in.size(); ++i) {
+            // if (right[obj.index] == -1 ) { //新目标
+            if (right[i] == -1 ) { //新目标
+                PV_OBJ_DATA temp = in[i]; //obj;
                 temp.index = slotForNewKalman();
                 if (temp.index < 0) continue;   //没有空位则丢弃目标
+                temp.track_times = 0;  // 新目标没有追踪
                 prevTargets_.push_back(temp);
 
                 //新目标，还需要其它信息计算变化量
-                x_[temp.index] << obj.x_pos, obj.y_pos, obj.z_pos,
-                                obj.length, obj.width, obj.height,
-                                obj.intensity;
+                x_[temp.index] << temp.x_pos, temp.y_pos, temp.z_pos,
+                                temp.length, temp.width, temp.height,
+                                temp.intensity;
                 u_[temp.index].setZero(); // Kalman对象还没有控制变量
                 ukf_[temp.index].init(x_[temp.index]);
             }
@@ -146,7 +149,6 @@ public:
 private:
     /**
      * @brief 在0~300的序号选择一个没有使用的
-     * TODO 假设目标是递增排列的
      * 
      * @return int 选中一个。-1 表示没有空位
      */
@@ -271,7 +273,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             qDebug("%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
             //qInfo("%f",d1);
             // 构造所有边的权重
-            if (d1 < threshold_)
+            if (d1 < threshold_)  // 阈值过滤
                 edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
         }
     }
