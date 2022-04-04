@@ -102,6 +102,9 @@ public:
         frames += 1;
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
+        // 先做二分最优匹配
+        // 清理边长不符合条件的，同时把左边节点无边的（只能预测），右边节点无边（新聚类）
+        // 剩余边重新组合准备二分图
         // 二分最优匹配
         int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
         std::vector<int> matching = bruteForce(nodes, edges);
@@ -297,7 +300,10 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             //dumpObj(nextSet[j], "New-edges");
             // 构造所有边的权重
             if (d1 < threshold_)  // 阈值过滤
-                edges.push_back( WeightedBipartiteEdge(prevSet[i].index, j, d1) );
+                edges.push_back( WeightedBipartiteEdge(i, j, d1) );
+        }
+        for (size_t j = nextSet.size(); j < prevSet.size(); ++j) {
+            edges.push_back( WeightedBipartiteEdge(i, j, 1000.0f) );
         }
     }
     return edges;
