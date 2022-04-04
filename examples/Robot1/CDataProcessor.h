@@ -6,6 +6,7 @@
 #include "IInterfaceManager.h"
 #include <QJsonValue>
 
+#include "CRedisClient.h"
 #include "Tracking.hpp"
 
 class CDataProcessor : public IDataProcessor
@@ -25,8 +26,13 @@ private:
     CPluginContext* m_pContext{nullptr};
     IInterfaceManager* m_pInterfaceManager{nullptr};
 
-    float m_param{0.0f};
+    int m_param{0};
     KalmanTracking::LidarTracking *lidar_;
+    QByteArray m_ba_objectinfo;
+
+    std::vector<PV_OBJ_DATA> inSet;
+
+    CRedisClient* m_pRedisClient{nullptr};
 };
 
 #endif // CDATAPROCESSOR_H
