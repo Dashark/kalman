@@ -77,8 +77,13 @@ class LidarTracking {
     const static int N = 300;
     static int frames;
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0) {
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0), spots_(N, 0) {
         // 构造里目标ID固定了，新目标要顺序编号
+        int i = 0;
+        for (PV_OBJ_DATA &data : prevTargets_) {
+            data.index = i ++;
+            spots_[data.index] = data.index;
+        }
         threshold_ = threshold;
         for (int i = 0; i < N; ++i) {
             x_[i].setZero();
@@ -127,6 +132,7 @@ public:
                 temp.index = slotForNewKalman();
                 if (temp.index < 0) continue;   //没有空位则丢弃目标
                 temp.track_times = 0;  // 新目标没有追踪
+                spots_[temp.index] = 1 + *std::max_element(spots_.begin(), spots_.end());
                 prevTargets_.push_back(temp);
                 dumpObj(temp, "New-first");
 
@@ -147,7 +153,10 @@ public:
     {
         size = 0;
         for (PV_OBJ_DATA &data : prevTargets_) {
+            // data.index 要递增，递增的结果要保留，然后要替换
+            // spots_中记录和查找最大值，*std::max_element()
             pOut[size] = data;
+            pOut[size].index = spots_[data.index];
             size += 1;
             if (size > N) {
                 break;
@@ -255,7 +264,8 @@ private:
     }
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
-    float threshold_;
+    float threshold_;   //距离阈值
+    std::vector<int> spots_;   // 资源映射表
 
 private:
     std::vector<int> predicts_;  // 纯粹的Kalman预测
