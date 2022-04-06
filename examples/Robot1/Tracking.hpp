@@ -102,49 +102,28 @@ public:
         frames += 1;
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
-        // 先做二分最优匹配
-        // 清理边长不符合条件的，同时把左边节点无边的（只能预测），右边节点无边（新聚类）
-        // 剩余边重新组合准备二分图
         // 二分最优匹配
-        int nodes = prevTargets_.size() < in.size() ? prevTargets_.size() : in.size();
-        std::vector<int> matching = bruteForce(nodes, edges);
-        // 先做Kalman
-        for (PV_OBJ_DATA &obj : prevTargets_) {
-            int right = matching[obj.index];
-            if (right >= 0) {
-                kalmanProcess(obj, in[right]);
-                memcpy(obj.redis_key, in[right].redis_key, 40);
-                dumpObj(obj, "Old-track");
+        int nodes = prevTargets_.size() < in.size() ? in.size() : prevTargets_.size();
+        std::vector<int> matching = hungarianMinimumWeightPerfectMatching(nodes, edges);
+        qDebug() << "nodes : " << nodes;
+
+        size_t left_size = prevTargets_.size();
+        for (size_t i = 0; i < left_size; ++i) {
+            int right = matching[i];
+            auto eit = std::find_if(edges.begin(), edges.end(), findEdges(i, right));
+            assert(eit != edges.end());
+            if (eit->cost < threshold_) {
+                kalmanProcess(prevTargets_[i], in[right]);
+                memcpy(prevTargets_[i].redis_key, in[right].redis_key, 40);
+                dumpObj(prevTargets_[i], "Old-track");
                 dumpObj(in[right], "New-track");
             }
             else {
-                kalmanProcess(obj);
-                dumpObj(obj, "Old-pred");
-            }
-        }
-        std::vector<int> right(N, -1);
-        for (int &id : matching) {
-            if (id != -1)
-                right[id] = id;
-        }
-        // for (auto &obj : in) {
-        for (size_t i = 0; i < in.size(); ++i) {
-            // if (right[obj.index] == -1 ) { //新目标
-            if (right[i] == -1 ) { //新目标
-                PV_OBJ_DATA temp = in[i]; //obj;
-                temp.index = slotForNewKalman();
-                if (temp.index < 0) continue;   //没有空位则丢弃目标
-                temp.track_times = 0;  // 新目标没有追踪
-                spots_[temp.index] = 1 + *std::max_element(spots_.begin(), spots_.end());
-                prevTargets_.push_back(temp);
-                dumpObj(temp, "New-first");
-
-                //新目标，还需要其它信息计算变化量
-                x_[temp.index] << temp.x_pos, temp.y_pos, temp.z_pos,
-                                temp.length, temp.width, temp.height,
-                                temp.intensity;
-                u_[temp.index].setZero(); // Kalman对象还没有控制变量
-                ukf_[temp.index].init(x_[temp.index]);
+                kalmanProcess(prevTargets_[i]);
+                dumpObj(prevTargets_[i], "Old-pred");
+                if (right < in.size()) {
+                    newTarget(in[right]);
+                }
             }
         }
         prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
@@ -167,9 +146,35 @@ public:
         }
     }
 private:
+    struct findEdges
+    {
+        int left, right;
+        findEdges(int i, int j) { left = i; right = j; }
+        bool operator () (const WeightedBipartiteEdge &e) {
+            return e.left == left && e.right == right;
+        }
+    };
     void dumpObj(const PV_OBJ_DATA &obj, char type[]) 
     {
-        qDebug(",%d,%s,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d",frames,type, obj.index,obj.x_pos,obj.y_pos,obj.z_pos,obj.x_speed,obj.y_speed,obj.z_speed,obj.length,obj.width,obj.height,obj.intensity);
+        //qDebug(",%d,%s,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d",frames,type, obj.index,obj.x_pos,obj.y_pos,obj.z_pos,obj.x_speed,obj.y_speed,obj.z_speed,obj.length,obj.width,obj.height,obj.intensity);
+    }
+    bool newTarget(const PV_OBJ_DATA &data)
+    {
+        PV_OBJ_DATA temp = data;
+        temp.index = slotForNewKalman();
+        if (temp.index < 0) false;   //没有空位则丢弃目标
+        temp.track_times = 0;  // 新目标没有追踪
+        spots_[temp.index] = 1 + *std::max_element(spots_.begin(), spots_.end());
+        prevTargets_.push_back(temp);
+        dumpObj(temp, "New-first");
+
+        //新目标，还需要其它信息计算变化量
+        x_[temp.index] << temp.x_pos, temp.y_pos, temp.z_pos,
+                        temp.length, temp.width, temp.height,
+                        temp.intensity;
+        u_[temp.index].setZero(); // Kalman对象还没有控制变量
+        ukf_[temp.index].init(x_[temp.index]);
+        return true;
     }
     /**
      * @brief 在0~300的序号选择一个没有使用的
@@ -295,20 +300,25 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     for (size_t i = 0; i < prevSet.size(); ++i) {
         for (size_t j = 0; j < nextSet.size(); ++j) {
             float d1 = eucDistance(prevSet[i], nextSet[j]); //std::sqrt( delta.dot(delta) ); //计算向量距离
-            qDebug(",%d,New-edges,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",frames,j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
+            // qDebug(",%d,New-edges,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",frames,j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
             //qInfo("%f",d1);
             //dumpObj(nextSet[j], "New-edges");
             // 构造所有边的权重
-            if (d1 < threshold_)  // 阈值过滤
+            // if (d1 < threshold_)  // 阈值过滤
                 edges.push_back( WeightedBipartiteEdge(i, j, d1) );
         }
         for (size_t j = nextSet.size(); j < prevSet.size(); ++j) {
             edges.push_back( WeightedBipartiteEdge(i, j, 1000.0f) );
         }
     }
+    for (size_t i = prevSet.size(); i < nextSet.size(); ++i) {
+        for (size_t j = 0; j < nextSet.size(); ++j) {
+            edges.push_back(WeightedBipartiteEdge(i, j, 2000.0f));
+        }
+    }
     return edges;
 }
-#define DIMS 3
+#define DIMS 2
 /**
  * @brief 数据格式转换
  *
@@ -318,7 +328,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 Kalman::Vector<float, DIMS> toVector(const PV_OBJ_DATA &data) {
     Kalman::Vector<float, DIMS> target;
     target << //data.width, data.length, data.height,
-              data.x_pos, data.y_pos, data.z_pos;
+              data.x_pos, data.y_pos;//, data.z_pos;
               //data.x_speed, data.y_speed, data.z_speed,
               //data.intensity;
     return target;
