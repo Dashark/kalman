@@ -21,7 +21,7 @@
 #define fo(i, n) for(int i = 0, _n = (n); i < _n; ++i)
 #define range(i, a, b) for(int i = (a), _n = (b); i < _n; ++i)
 
-static const int oo = std::numeric_limits<int>::max();
+static const float oo = std::numeric_limits<float>::max();
 static const int UNMATCHED = -1;
 
 struct LeftEdge {
@@ -31,7 +31,7 @@ struct LeftEdge {
     LeftEdge() : right(), cost() {}
     LeftEdge(int right, float cost) : right(right), cost(cost) {}
 
-    const bool operator < (const LeftEdge& otherEdge) const {
+    bool operator < (const LeftEdge& otherEdge) const {
         return right < otherEdge.right || (right == otherEdge.right && cost < otherEdge.cost);
     }
 };
@@ -67,9 +67,9 @@ static const std::pair<float, std::vector<int> > bruteForceInternal(const int n,
 #define N 300
 const std::vector<int> bruteForce(const int n, const std::vector<WeightedBipartiteEdge> edges)
 {
-    std::vector<bool> leftMatched(N, false), rightMatched(N, false);
+    std::vector<bool> leftMatched(n, false), rightMatched(n, false);
     std::vector<int> edgeIndices = bruteForceInternal(n, edges, leftMatched, rightMatched).second;
-    std::vector<int> matching(N, -1);
+    std::vector<int> matching(n, -1);
     for (int i = 0; i < edgeIndices.size(); ++i) {
         const WeightedBipartiteEdge& edge = edges[edgeIndices[i]];
         matching[edge.left] = edge.right;
@@ -88,17 +88,17 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
     // While we're at it, we check that every node has at least one associated edge.
     // (Note: We filter out the edges that invalidly refer to a node on the left or right outside [0, n).)
     {
-        int leftEdgeCounts[n], rightEdgeCounts[n];
-        std::fill_n(leftEdgeCounts, n, 0);
-        std::fill_n(rightEdgeCounts, n, 0);
+        std::vector<int> leftEdgeCounts(n, 0), rightEdgeCounts(n, 0);
+        //std::fill_n(leftEdgeCounts, n, 0);
+        //std::fill_n(rightEdgeCounts, n, 0);
 
         fo(edgeIndex, allEdges.size()) {
             const WeightedBipartiteEdge& edge = allEdges[edgeIndex];
             if (edge.left >= 0 && edge.left < n) {
-                ++leftEdgeCounts[edge.left];
+                leftEdgeCounts[edge.left] += 1;
             }
             if (edge.right >= 0 && edge.right < n) {
-                ++rightEdgeCounts[edge.right];
+                rightEdgeCounts[edge.right] += 1;
             }
         }
 
@@ -148,7 +148,8 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     // These hold "potentials" for nodes on the left and nodes on the right, which reduce the costs of attached edges.
     // We maintain that every reduced cost, cost[i][j] - leftPotential[i] - leftPotential[j], is greater than zero.
-    float leftPotential[n], rightPotential[n];
+    std::vector<float> leftPotential(n, 0.0f);
+    std::vector<float> rightPotential(n, std::numeric_limits<float>::max());
 
     //region Node potential initialization
 
@@ -177,7 +178,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
     // by the left potentials.
     // This guarantees that each node on the right has at least one "tight" edge.
 
-    std::fill_n(rightPotential, n, oo);
+    //std::fill_n(rightPotential, n, oo);
 
     fo(edgeIndex, allEdges.size()) {
         const WeightedBipartiteEdge& edge = allEdges[edgeIndex];
@@ -191,8 +192,8 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     // Tracks how many edges for each left node are "tight".
     // Following initialization, we maintain the invariant that these are at the start of the node's edge list.
-    int leftTightEdgesCount[n];
-    std::fill_n(leftTightEdgesCount, n, 0);
+    std::vector<int> leftTightEdgesCount(n, 0);
+    //std::fill_n(leftTightEdgesCount, n, 0);
 
     //region Tight edge initialization
 
@@ -206,7 +207,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
         fo(edgeIndex, edges.size()) {
             const LeftEdge& edge = edges[edgeIndex];
             float reducedCost = edge.cost - leftPotential[i] - rightPotential[edge.right];
-            if (reducedCost == 0) {
+            if (reducedCost <= 0.0f) {
                 if (edgeIndex != tightEdgeCount) {
                     std::swap(edges[tightEdgeCount], edges[edgeIndex]);
                 }
@@ -223,9 +224,9 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     // We maintain an (initially empty) partial matching, in the subgraph of tight edges.
     int currentMatchingCardinality = 0;
-    int leftMatchedTo[n], rightMatchedTo[n];
-    std::fill_n(leftMatchedTo, n, UNMATCHED);
-    std::fill_n(rightMatchedTo, n, UNMATCHED);
+    std::vector<int> leftMatchedTo(n, UNMATCHED), rightMatchedTo(n, UNMATCHED);
+    //std::fill_n(leftMatchedTo, n, UNMATCHED);
+    //std::fill_n(rightMatchedTo, n, UNMATCHED);
 
     //region Initial matching (speedup?)
 
@@ -245,7 +246,8 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
     if (currentMatchingCardinality == n) {
         // Well, that's embarassing. We're already done!
-        return std::vector<int>(leftMatchedTo, leftMatchedTo + n);
+        //return std::vector<int>(leftMatchedTo, leftMatchedTo + n);
+        return leftMatchedTo;
     }
 
     //endregion Initial matching (speedup?)
@@ -269,11 +271,11 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
     // rightMinimumSlackLeftNode[j] gives the node i with the corresponding edge.
     // rightMinimumSlackEdgeIndex[j] gives the edge index for node i.
 
-    int rightMinimumSlack[n], rightMinimumSlackLeftNode[n], rightMinimumSlackEdgeIndex[n];
+    std::vector<int> rightMinimumSlack(n), rightMinimumSlackLeftNode(n), rightMinimumSlackEdgeIndex(n);
 
     std::deque<int> leftNodeQueue;
-    bool leftSeen[n];
-    int rightBacktrack[n];
+    std::vector<bool> leftSeen(n);
+    std::vector<int> rightBacktrack(n);
 
     // Note: the above are all initialized at the start of the loop.
 
@@ -285,15 +287,15 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
         // Clear out slack caches.
         // Note: We need to clear the nodes so that we can notice when there aren't any edges available.
-        std::fill_n(rightMinimumSlack, n, oo);
-        std::fill_n(rightMinimumSlackLeftNode, n, UNMATCHED);
+        std::fill_n(rightMinimumSlack.begin(), n, std::numeric_limits<int>::max());
+        std::fill_n(rightMinimumSlackLeftNode.begin(), n, -1);
 
         // Clear the queue.
         leftNodeQueue.clear();
 
         // Mark everything "unseen".
-        std::fill_n(leftSeen, n, false);
-        std::fill_n(rightBacktrack, n, UNMATCHED);
+        std::fill_n(leftSeen.begin(), n, false);
+        std::fill_n(rightBacktrack.begin(), n, -1);
 
         //endregion Loop state initialization
 
@@ -305,7 +307,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
         // By heuristic, we pick the node with fewest tight edges, giving the BFS an easier time.
         // (The asymptotics don't care about this, but maybe it helps. Eh.)
         {
-            int minimumTightEdges = oo;
+            int minimumTightEdges = std::numeric_limits<int>::max();
             fo(i, n) {
                 if (leftMatchedTo[i] == UNMATCHED && leftTightEdgesCount[i] < minimumTightEdges) {
                     minimumTightEdges = leftTightEdgesCount[i];
@@ -340,7 +342,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
                     const LeftEdge& edge = edges[edgeIndex];
                     const int j = edge.right;
 
-                    assert(edge.cost - leftPotential[i] - rightPotential[j] >= 0);
+                    //assert(edge.cost - leftPotential[i] - rightPotential[j] >= 0.0f);
                     if (edge.cost > leftPotential[i] + rightPotential[j]) {
                         // This edge is loose now.
                         --leftTightEdgesCount[i];
@@ -381,7 +383,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
                             // This edge is to a node on the right that we haven't reached yet.
 
                             float reducedCost = edge.cost - potential - rightPotential[j];
-                            assert(reducedCost >= 0);
+                            assert(reducedCost >= 0.0f);
 
                             if (reducedCost < rightMinimumSlack[j]) {
                                 // There should be a better way to do this backtracking...
@@ -407,7 +409,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
 
                 //region Find minimum slack node, or abort if none exists
 
-                int minimumSlack = oo;
+                int minimumSlack = std::numeric_limits<int>::max();
                 fo(j, n) {
                     if (rightMatchedTo[j] == UNMATCHED || !leftSeen[rightMatchedTo[j]]) {
                         // This isn't a node reached by our BFS. Update minimum slack.
@@ -457,7 +459,7 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
                                 std::vector<LeftEdge>& edges = leftEdges[i];
                                 std::swap(edges[edgeIndex], edges[leftTightEdgesCount[i]]);
                             }
-                            ++leftTightEdgesCount[i];
+                            leftTightEdgesCount[i] += 1;
 
                             //endregion Update leftEdges[i] and leftTightEdgesCount[i]
 
@@ -509,6 +511,6 @@ const std::vector<int> hungarianMinimumWeightPerfectMatching(const int n, const 
     }
 
     // Oh look, we're done.
-    return std::vector<int>(leftMatchedTo, leftMatchedTo + n);
+    return leftMatchedTo;
 }
 
