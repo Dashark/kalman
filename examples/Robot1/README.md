@@ -26,3 +26,27 @@ The models and measurement vectors are defined in `OrientationMeasurementModel.h
 
 ### Euclidean distance error in each time-step
 ![Error](error.png)
+
+```
+@startuml
+abstract        Association
+class           SimpleAssociation
+class           ComplexAssociation
+class           OptimalAssociation
+
+Association<|--SimpleAssociation
+Association<|--ComplexAssociation
+Association<|--OptimalAssociation
+
+abstract        TargetsType
+class           Pedestrians
+class           Vehicles
+
+TargetsType<|--Pedestrians
+TargetsType<|--Vehicles
+
+class Measurement
+
+Association -- Measurement
+@enduml
+```
