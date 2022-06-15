@@ -81,6 +81,7 @@ class LidarTracking {
     static int frames;
 public:
     LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0), spots_(N, 0) {
+        assert(!prevTargets_.empty());
         // 构造里目标ID固定了，新目标要顺序编号
         int i = 0;
         for (PV_OBJ_DATA &data : prevTargets_) {
@@ -102,6 +103,7 @@ public:
      *
      */
     virtual void tracking(const std::vector<PV_OBJ_DATA> &in) {
+        assert(!in.empty());
         frames += 1;
         qint64 edges_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         // 匹配最优的目标组合
