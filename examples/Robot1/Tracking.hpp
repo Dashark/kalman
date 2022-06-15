@@ -245,6 +245,7 @@ private:
      */
     void kalmanProcess(PV_OBJ_DATA &obj)
     {
+        assert(obj.index < N);
         x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
         obj.x_speed = u_[obj.index].dx();
         obj.y_speed = u_[obj.index].dy();

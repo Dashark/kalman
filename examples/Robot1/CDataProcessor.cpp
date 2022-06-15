@@ -54,6 +54,36 @@ bool CDataProcessor::Uninit()
     return ret;
 }
 
+static bool verifyData(Sin *pin)
+{
+    bool ret = false;
+    if (pin->m_obj_num <= 0) 
+        return ret;
+    for (int i = 0; i < pin->m_obj_num; ++i) {
+        PV_OBJ_DATA *tp = pin->m_obj_data + i;
+        // just one attr is NAN or INF, discard the whole package.
+        if (!isnormal(tp->width))
+            return ret;
+        if (!isnormal(tp->height))
+            return ret;
+        if (!isnormal(tp->length))
+            return ret;
+        if (!isnormal(tp->x_pos))
+            return ret;
+        if (!isnormal(tp->y_pos))
+            return ret;
+        if (!isnormal(tp->z_pos))
+            return ret;
+        if (!isnormal(tp->x_speed))
+            return ret;
+        if (!isnormal(tp->y_speed))
+            return ret;
+        if (!isnormal(tp->z_speed))
+            return ret;
+    }
+    ret = true;
+    return ret;
+}
 #include <QMap>
 bool CDataProcessor::ProcessData(const QByteArray &in)
 {
@@ -67,7 +97,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
 
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
-        if (pIn->m_obj_num <= 0) {
+        if (!verifyData(pin)) {
             // 没有目标或异常条件下返回false时
             break;
         }
