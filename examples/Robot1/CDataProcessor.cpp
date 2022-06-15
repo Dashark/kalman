@@ -65,9 +65,13 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
             break;
         }
 
-        // TODO: 将 in 转换成输入的数据结构， 计算之后，生成输出的数据结构，存储到 out 中
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
+        if (pIn->m_obj_num <= 0) {
+            // 没有目标或异常条件下返回false时
+            break;
+        }
+        // TODO 没有聚类目标，但是旧目标的Kalman状态应该更新的
 
         m_ba_objectinfo.fill('\0',sizeof(SOut));
         SOut* pOut = (SOut*)m_ba_objectinfo.data();
