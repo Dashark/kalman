@@ -4,6 +4,8 @@
 #include <set>
 #include <vector>
 #include <iostream>
+#include <cmath>
+#include <random>
 
 #include "SystemModel.hpp"
 #include "PositionMeasurementModel.hpp"
@@ -52,6 +54,35 @@ struct SOut {
 //    int m_obj_point_count[300];   //第x个目标的点云的数量
 //    PV_POINT_XYZI points[1331200];  //目标点云数据10400*8*16
 };
+
+// 方差列表
+typedef struct _VAR_PARAMS {
+    float var_pos_x;
+    float var_pos_y;
+    float var_pos_z;
+    float var_vel_x;
+    float var_vel_y;
+    float var_vel_z;
+    float var_acc_x;
+    float var_acc_y;
+    float var_acc_z;
+    float var_heading;
+    float var_heading_rate;
+    _VAR_PARAMS() {
+        var_pos_x = sqrt(0.1f);
+        var_pos_y = sqrt(0.1f);
+        var_pos_z = 0.0f;
+        var_vel_x = sqrt(10.0f);
+        var_vel_y = sqrt(10.0f);
+        var_vel_z = 0.0f;
+        var_acc_x = sqrt(0.1f);
+        var_acc_y = sqrt(0.1f);
+        var_acc_z = 0.0f;
+        var_heading = sqrt(2.46f);
+        var_heading_rate = sqrt(0.1f);
+    }
+} VAR_PARAMS;
+
 namespace KalmanTracking
 {
 
@@ -77,7 +108,9 @@ class LidarTracking {
     const static int N = 300;
     static int frames;
 public:
-    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold) : prevTargets_(in), predicts_(N, 0), spots_(N, 0) {
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold)
+        : prevTargets_(in), predicts_(N, 0), spots_(N, 0),
+         variance_(-1.0, 1.0), var_params_() {
         // 构造里目标ID固定了，新目标要顺序编号
         int i = 0;
         for (PV_OBJ_DATA &data : prevTargets_) {
@@ -89,6 +122,8 @@ public:
             x_[i].setZero();
             u_[i].setZero();
         }
+
+        generator_.seed( std::chrono::system_clock::now().time_since_epoch().count() );
     }
     virtual ~LidarTracking(){}
     /**
@@ -219,15 +254,18 @@ private:
      *
      * @param obj 目标
      */
+    // TODO 速度与加速度的改变等于改变了运动方向！！！
     void kalmanProcess(PV_OBJ_DATA &obj)
     {
         x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
-        obj.x_speed = u_[obj.index].dx();
-        obj.y_speed = u_[obj.index].dy();
-        obj.z_speed = u_[obj.index].dz();
-        obj.x_pos = x_[obj.index].x();
-        obj.y_pos = x_[obj.index].y();
-        obj.z_pos = x_[obj.index].z();
+        // 使用控制参数改变目标
+        obj.x_speed = u_[obj.index].dx() + u_[obj.index].ddx();
+        obj.y_speed = u_[obj.index].dy() + u_[obj.index].ddy();
+        obj.z_speed = u_[obj.index].dz() + u_[obj.index].ddz();
+        obj.x_pos = x_[obj.index].x() + var_params_.var_pos_x * variance_(generator_); 
+        obj.y_pos = x_[obj.index].y() + var_params_.var_pos_y * variance_(generator_);
+        obj.z_pos = x_[obj.index].z() + var_params_.var_pos_z * variance_(generator_);
+        updateControl(obj.index);
         predicts_[obj.index] += 1;
         obj.track_times -= 1;  // 雷达目标丢失，重新才跟踪
     }
@@ -251,21 +289,14 @@ private:
         left.height = (left.height + right.height) / 2;
         left.intensity = right.intensity;
 
-        //更新目标的控制
-        u_[left.index].dx() = right.x_pos - left.x_pos;
-        u_[left.index].dy() = right.y_pos - left.y_pos;
-        u_[left.index].dz() = right.z_pos - left.z_pos;
-        u_[left.index].dl() = right.length - left.length;
-        u_[left.index].dw() = right.width - left.width;
-        u_[left.index].dh() = right.height - left.height;
-        u_[left.index].di() = right.intensity - left.intensity;
+        updateControl(left, right);
 
         //对应Kalman的预测与更新
         x_[left.index] = ukf_[left.index].predict(sys_, u_[left.index]);
         PositionMeasurement measure;
-        measure << left.x_pos, left.y_pos, left.z_pos,
-                    left.length, left.width, left.height,
-                    left.intensity;
+        measure << right.x_pos, right.y_pos, right.z_pos,
+                    right.length, right.width, right.height,
+                    right.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
         predicts_[left.index] = 0;
         left.track_times += 1;
@@ -284,6 +315,9 @@ private:
     SystemModel sys_;
     // Measurement models
     PositionModel pmm_;
+    std::default_random_engine generator_;
+    std::uniform_real_distribution<T> variance_;
+    VAR_PARAMS var_params_;
 
 private:
 /**
@@ -358,6 +392,29 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     // 最新样本加入样本集重新计算协方差矩阵？有简单方法吗？
     // 每个目标都加入样本矩阵（不可能无限制）
     return 0.0f;
+}
+
+void updateControl(int index)
+{
+    // 修正控制变量 u_
+    u_[obj.index].ddx = u_[obj.index].ddx + var_params_.var_acc_x * variance_(generator_);
+    u_[obj.index].ddy = u_[obj.index].ddy + var_params_.var_acc_y * variance_(generator_);
+    u_[obj.index].ddz = u_[obj.index].ddz + var_params_.var_acc_z * variance_(generator_);
+    u_[obj.index].dx = u_[obj.index].dx + var_params_.var_vel_x * variance_(generator_);
+    u_[obj.index].dy = u_[obj.index].dy + var_params_.var_vel_y * variance_(generator_);
+    u_[obj.index].dz = u_[obj.index].dz + var_params_.var_vel_z * variance_(generator_);
+}
+
+void updateControl(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
+{
+    //更新目标的控制
+    u_[left.index].ddx() = right.x_pos - left.x_pos - u_[left.index].dx() + var_params_.var_acc_x * variance_(generator_);; // + 加速度的偏差
+    u_[left.index].ddy() = right.y_pos - left.y_pos - u_[left.index].dy() + var_params_.var_acc_y * variance_(generator_);;
+    u_[left.index].ddz() = right.z_pos - left.z_pos - u_[left.index].dz() + var_params_.var_acc_z * variance_(generator_);;
+    u_[left.index].dx() = right.x_pos - left.x_pos + var_params_.var_vel_x * variance_(generator_);
+    u_[left.index].dy() = right.y_pos - left.y_pos + var_params_.var_vel_y * variance_(generator_);
+    u_[left.index].dz() = right.z_pos - left.z_pos + var_params_.var_vel_z * variance_(generator_);
+    u_[left.index].di() = right.intensity - left.intensity;
 }
 };
 
