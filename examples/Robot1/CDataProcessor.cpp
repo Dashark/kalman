@@ -3,13 +3,15 @@
 #include <QJsonObject>
 #include <QDateTime>
 #include <QJsonValue>
+#include <math.h>
 #include "IDataDispatcher.h"
 
 int KalmanTracking::LidarTracking::frames = 0;
 
 #include "CommonDefine.h"
 CDataProcessor::CDataProcessor(CPluginContext *pContext, IInterfaceManager *pInterfaceManager)
-    : m_pContext(pContext)
+    : QObject(nullptr)
+    , m_pContext(pContext)
     , m_pInterfaceManager(pInterfaceManager)
 {
     // TOOD: 算法本身，需要在这里，从插件的配置文件中，将需要的参数解析出来，
@@ -34,6 +36,28 @@ bool CDataProcessor::Init()
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis客户端初始化失败");
             m_pRedisClient = nullptr;
         }
+
+        // 轨迹不可见时，不启动跟踪服务
+//        {
+//            QByteArray ba_in;
+//            if (!m_pRedisClient->Get("TrackVisible", ba_in))
+//            {
+//                qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，不允许启动跟踪服务");
+//                break;
+//            }
+
+//            QString strIn = QString::fromUtf8(ba_in);
+//            if (strIn != "true")
+//            {
+//                qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，不允许启动跟踪服务");
+//                break;
+//            }
+//        }
+
+        m_pTimer = new QTimer();
+        connect(m_pTimer, &QTimer::timeout, this, &CDataProcessor::slotForTimeout);
+        m_pTimer->start(3000);
+
         ret = true;
     } while (false);
     return ret;
@@ -43,6 +67,12 @@ bool CDataProcessor::Uninit()
 {
     bool ret = false;
     do {
+        if (m_pTimer != nullptr)
+        {
+            m_pTimer->stop();
+            m_pTimer->deleteLater();
+            m_pTimer = nullptr;
+        }
         if (m_pRedisClient != nullptr)
         {
             m_pRedisClient->Uninit();
@@ -54,10 +84,10 @@ bool CDataProcessor::Uninit()
     return ret;
 }
 
-static bool verifyData(Sin *pin)
+static bool verifyData(SIn *pin)
 {
     bool ret = false;
-    if (pin->m_obj_num <= 0) 
+    if (pin->m_obj_num <= 0)
         return ret;
     for (int i = 0; i < pin->m_obj_num; ++i) {
         PV_OBJ_DATA *tp = pin->m_obj_data + i;
@@ -97,7 +127,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
 
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
-        if (!verifyData(pin)) {
+        if (!verifyData(pIn)) {
             // 没有目标或异常条件下返回false时
             break;
         }
@@ -162,8 +192,45 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
 
 #endif
         // 如果需要处理 SOut1或者 SOut2 的数据, 需要向数据分发器订阅数据，方法为:
-//        pDataDispatcher->Register(p, "SOut1");
+        //        pDataDispatcher->Register(p, "SOut1");
         // 需要在 CPluginDemo::RegistInterfaces 中注册 对应类型的数据
+
+        ret = true;
+    } while (false);
+    return ret;
+}
+
+void CDataProcessor::slotForTimeout()
+{
+    do {
+        QByteArray ba_in;
+        if (!m_pRedisClient->Get("TrackVisible", ba_in))
+        {
+            break;
+        }
+
+        QString strIn = QString::fromUtf8(ba_in);
+        if (strIn == "false")
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，结束跟踪服务");
+            break;
+        }
+
+        //
+        if (!updateTrackParams())
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackParams获取失败");
+            break;
+        }
+    } while (false);
+
+}
+
+bool CDataProcessor::updateTrackParams()
+{
+    bool ret = false;
+    do {
+
 
         ret = true;
     } while (false);
