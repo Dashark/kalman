@@ -68,35 +68,35 @@ class Control : public Kalman::Vector<T, 7>
 public:
     KALMAN_VECTOR(Control, T, 7)
     
-    //! delta X
+    //! delta X velocity
     static constexpr size_t dX = 0;
-    //! delta Y
+    //! delta Y velocity
     static constexpr size_t dY = 1;
-    //! delta Z
+    //! delta Z velocity
     static constexpr size_t dZ = 2;
-    //! delta Lenght
-    static constexpr size_t dL = 3;
-    //! delta Width
-    static constexpr size_t dW = 4;
-    //! delta Height
-    static constexpr size_t dH = 5;
+    //! delta X acceleration
+    static constexpr size_t ddX = 3;
+    //! delta Y acceleration
+    static constexpr size_t ddY = 4;
+    //! delta Z acceleration
+    static constexpr size_t ddZ = 5;
     //! delta Intensity
     static constexpr size_t dI = 6;
     
     T dx()       const { return (*this)[ dX ]; }
     T dy()       const { return (*this)[ dY ]; }
     T dz()       const { return (*this)[ dZ ]; }
-    T dl()       const { return (*this)[ dL ]; }
-    T dw()       const { return (*this)[ dW ]; }
-    T dh()       const { return (*this)[ dH ]; }
+    T ddx()       const { return (*this)[ ddX ]; }
+    T ddy()       const { return (*this)[ ddY ]; }
+    T ddz()       const { return (*this)[ ddZ ]; }
     T di()       const { return (*this)[ dI ]; }
     
     T& dx()      { return (*this)[ dX ]; }
     T& dy()      { return (*this)[ dY ]; }
     T& dz()      { return (*this)[ dZ ]; }
-    T& dl()      { return (*this)[ dL ]; }
-    T& dw()      { return (*this)[ dW ]; }
-    T& dh()      { return (*this)[ dH ]; }
+    T& ddx()      { return (*this)[ ddX ]; }
+    T& ddy()      { return (*this)[ ddY ]; }
+    T& ddz()      { return (*this)[ ddZ ]; }
     T& di()      { return (*this)[ dI ]; }
 };
 
