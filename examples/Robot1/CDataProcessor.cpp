@@ -54,6 +54,36 @@ bool CDataProcessor::Uninit()
     return ret;
 }
 
+static bool verifyData(Sin *pin)
+{
+    bool ret = false;
+    if (pin->m_obj_num <= 0) 
+        return ret;
+    for (int i = 0; i < pin->m_obj_num; ++i) {
+        PV_OBJ_DATA *tp = pin->m_obj_data + i;
+        // just one attr is NAN or INF, discard the whole package.
+        if (!isnormal(tp->width))
+            return ret;
+        if (!isnormal(tp->height))
+            return ret;
+        if (!isnormal(tp->length))
+            return ret;
+        if (!isnormal(tp->x_pos))
+            return ret;
+        if (!isnormal(tp->y_pos))
+            return ret;
+        if (!isnormal(tp->z_pos))
+            return ret;
+        if (!isnormal(tp->x_speed))
+            return ret;
+        if (!isnormal(tp->y_speed))
+            return ret;
+        if (!isnormal(tp->z_speed))
+            return ret;
+    }
+    ret = true;
+    return ret;
+}
 #include <QMap>
 bool CDataProcessor::ProcessData(const QByteArray &in)
 {
@@ -65,9 +95,13 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
             break;
         }
 
-        // TODO: 将 in 转换成输入的数据结构， 计算之后，生成输出的数据结构，存储到 out 中
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
+        if (!verifyData(pin)) {
+            // 没有目标或异常条件下返回false时
+            break;
+        }
+        // TODO 没有聚类目标，但是旧目标的Kalman状态应该更新的
 
         m_ba_objectinfo.fill('\0',sizeof(SOut));
         SOut* pOut = (SOut*)m_ba_objectinfo.data();

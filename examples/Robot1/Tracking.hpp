@@ -13,6 +13,8 @@
 
 #include "BipartiteHungarian.h"
 #include <QDebug>
+#include <QDateTime>
+
 typedef struct {
     float x;        //精度 10微米
     float y;        //精度 10微米
@@ -38,6 +40,7 @@ typedef struct {
     float z_speed;            // 精度：0.01m/s
 
     int track_times{0};           // 目标的预测次数
+    float max_speed{0};       //最大速度
 } PV_OBJ_DATA;
 
 struct SIn {    // 输入的目标点云
@@ -111,6 +114,7 @@ public:
     LidarTracking(const std::vector<PV_OBJ_DATA> &in, float threshold)
         : prevTargets_(in), predicts_(N, 0), spots_(N, 0),
          variance_(-1.0, 1.0), var_params_() {
+        assert(!prevTargets_.empty());
         // 构造里目标ID固定了，新目标要顺序编号
         int i = 0;
         for (PV_OBJ_DATA &data : prevTargets_) {
@@ -134,14 +138,25 @@ public:
      *
      */
     virtual void tracking(const std::vector<PV_OBJ_DATA> &in) {
+        assert(!in.empty());
         frames += 1;
+        qint64 edges_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         // 匹配最优的目标组合
         std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
         // 二分最优匹配
         int nodes = prevTargets_.size() < in.size() ? in.size() : prevTargets_.size();
         std::vector<int> matching = hungarianMinimumWeightPerfectMatching(nodes, edges);
+        qint64 edges_t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         qDebug() << "nodes : " << nodes;
+        qDebug() << "edges elapsed time:" << edges_t2 - edges_t1; //TEST***
 
+        //通过共享内存传递中间数据。
+        //明确输入输出
+        //二分输入：聚类结果
+        //
+        //二分输出：
+
+        qint64 kalman_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         size_t left_size = prevTargets_.size();
         for (size_t i = 0; i < left_size; ++i) {
             int right = matching[i];
@@ -152,6 +167,7 @@ public:
                 memcpy(prevTargets_[i].redis_key, in[right].redis_key, 40);
                 dumpObj(prevTargets_[i], "Old-track");
                 dumpObj(in[right], "New-track");
+                kalman_elapsed_update_ += 1;
             }
             else {
                 kalmanProcess(prevTargets_[i]);
@@ -159,12 +175,20 @@ public:
                 if (right < in.size()) {
                     newTarget(in[right]);
                 }
+                kalman_elapsed_predict_ += 1;
             }
         }
+        qint64 kalman_t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
+        qDebug() << "kalman elapsed time:" << kalman_t2 - kalman_t1; //TEST***
+        //TEST***
+        kalmanElapsedTime();
+        qint64 erase_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
         std::sort(prevTargets_.begin(), prevTargets_.end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
         for (auto &tar : prevTargets_)
             dumpObj(tar, "Results");
+        qint64 erase_t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
+        qDebug() << "erase elapsed time:" << kalman_t2 - kalman_t1; //TEST***
     }
     void output(PV_OBJ_DATA pOut[], uint &size)
     {
@@ -257,6 +281,7 @@ private:
     // TODO 速度与加速度的改变等于改变了运动方向！！！
     void kalmanProcess(PV_OBJ_DATA &obj)
     {
+        assert(obj.index < N);
         x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
         // 使用控制参数改变目标
         obj.x_speed = u_[obj.index].dx() + u_[obj.index].ddx();
@@ -266,6 +291,10 @@ private:
         obj.y_pos = x_[obj.index].y() + var_params_.var_pos_y * variance_(generator_);
         obj.z_pos = x_[obj.index].z() + var_params_.var_pos_z * variance_(generator_);
         updateControl(obj.index);
+        float eu_speed = std::sqrt(obj.x_speed * obj.x_speed + obj.y_speed * obj.y_speed);
+        if (eu_speed > obj.max_speed) {
+            obj.max_speed = eu_speed;
+        }
         predicts_[obj.index] += 1;
         obj.track_times -= 1;  // 雷达目标丢失，重新才跟踪
     }
@@ -290,17 +319,36 @@ private:
         left.intensity = right.intensity;
 
         updateControl(left, right);
+        float eu_speed = std::sqrt(left.x_speed * left.x_speed + left.y_speed * left.y_speed);
+        if (eu_speed > left.max_speed) {
+            left.max_speed = eu_speed;
+        }
 
         //对应Kalman的预测与更新
+        qint64 t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         x_[left.index] = ukf_[left.index].predict(sys_, u_[left.index]);
+        qint64 t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         PositionMeasurement measure;
         measure << right.x_pos, right.y_pos, right.z_pos,
                     right.length, right.width, right.height,
                     right.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
+        qint64 t3 = QDateTime::currentMSecsSinceEpoch(); //TEST***
+        kalman_elapsed_predict_ += (t2 - t1); //TEST***
+        kalman_elapsed_update_ += (t3-t2); //TEST***
         predicts_[left.index] = 0;
         left.track_times += 1;
     }
+
+    //TEST***
+    qint64 kalman_elapsed_predict_ = 0;
+    qint64 kalman_elapsed_update_ = 0;
+    virtual void kalmanElapsedTime() {
+        qDebug() << "kalman elapsed time: predict:" << kalman_elapsed_predict_ << " ,update:" << kalman_elapsed_update_;
+        kalman_elapsed_predict_ = 0;
+        kalman_elapsed_update_ = 0;
+    }
+
 private:
     std::vector<PV_OBJ_DATA> prevTargets_;  //前一次观测的集合
     float threshold_;   //距离阈值
@@ -352,7 +400,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     }
     return edges;
 }
-#define DIMS 2
+#define DIMS 4
 /**
  * @brief 数据格式转换
  *
@@ -362,8 +410,8 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 Kalman::Vector<float, DIMS> toVector(const PV_OBJ_DATA &data) {
     Kalman::Vector<float, DIMS> target;
     target << //data.width, data.length, data.height,
-              data.x_pos, data.y_pos;//, data.z_pos;
-              //data.x_speed, data.y_speed, data.z_speed,
+              data.x_pos, data.y_pos,//, data.z_pos;
+              data.x_speed, data.y_speed; //, data.z_speed,
               //data.intensity;
     return target;
 }
@@ -373,9 +421,9 @@ float eucDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     // 欧氏距离
     Kalman::Vector<float, DIMS> prevTarget = toVector(left);
     PV_OBJ_DATA temp = right;
-    temp.x_speed = temp.x_pos - left.x_pos;
-    temp.y_speed = temp.y_pos - left.y_pos;
-    temp.z_speed = temp.z_pos - left.z_pos;
+    temp.x_speed = (temp.x_pos - left.x_pos + left.x_speed) / 2;
+    temp.y_speed = (temp.y_pos - left.y_pos + left.y_speed) / 2;
+    temp.z_speed = (temp.z_pos - left.z_pos + left.z_speed) / 2;
     Kalman::Vector<float, DIMS> nextTarget = toVector(temp);
     Kalman::Vector<float, DIMS> delta = nextTarget - prevTarget;
     float d1 = std::sqrt( delta.dot(delta) ); //计算向量距离
