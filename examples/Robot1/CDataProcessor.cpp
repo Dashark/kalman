@@ -125,6 +125,12 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
             break;
         }
 
+        if (!m_trackVisible)
+        {
+            // 不执行跟踪计算
+            break;
+        }
+
         // 注意，这里的数据结构中，不能有指针，否则不能与 QByteArray 相互转换
         SIn* pIn = (SIn*)in.data();
         if (!verifyData(pIn)) {
@@ -138,7 +144,7 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         // 加入Set并按照index排序
         inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
         if (lidar_ == nullptr) {
-            lidar_ = new KalmanTracking::LidarTracking(inSet,m_param);
+            lidar_ = new KalmanTracking::NoneTracking(inSet,m_param);
         }
         else {
             lidar_->tracking(inSet);
@@ -203,34 +209,66 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
 void CDataProcessor::slotForTimeout()
 {
     do {
-        QByteArray ba_in;
-        if (!m_pRedisClient->Get("TrackVisible", ba_in))
+        // 获取是否执行跟踪计算功能
+        {
+            QByteArray ba_in;
+            if (!m_pRedisClient->Get("TrackVisible", ba_in))
+            {
+                qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串找不到TrackVisible");
+                break;
+            }
+
+            QString strIn = QString::fromUtf8(ba_in);
+            if (strIn == "false")
+            {
+                qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，结束跟踪服务");
+                break;
+            }
+            m_trackVisible = true;
+        }
+
+        // 获取跟踪计算算法参数
+        if (!UpdateTrackParams())
         {
             break;
         }
 
-        QString strIn = QString::fromUtf8(ba_in);
-        if (strIn == "false")
-        {
-            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，结束跟踪服务");
-            break;
-        }
-
-        //
-        if (!updateTrackParams())
-        {
-            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackParams获取失败");
-            break;
-        }
     } while (false);
-
 }
 
-bool CDataProcessor::updateTrackParams()
+bool CDataProcessor::UpdateTrackParams()
 {
     bool ret = false;
     do {
 
+        QByteArray baTrackParams;
+        if (!m_pRedisClient->Get("TrackParams", baTrackParams))
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串找不到TrackParams");
+            break;
+        }
+
+        QJsonDocument jdTrackParams = QJsonDocument::fromJson(baTrackParams);
+        if (!jdTrackParams.isNull())
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackParams不是合法的json");
+            break;
+        }
+        QJsonObject joTraceParam = jdTrackParams.object();
+
+        m_algParamDistanceVector = joTraceParam.value("DistanceVector").toString();                             //!< 距离向量 缺省是X，Y值，可选 X轴速度，Y轴速度，强度。
+        m_algParamDistanceLimit = joTraceParam.value("DistanceLimit").toString().toDouble();                    //!< 距离阈值
+        m_algParamInitVariancePosX = joTraceParam.value("InitVariancePosX").toString().toDouble();              //!< 初始方差-X轴<initVariancePosX>：0.1
+        m_algParamInitVariancePosY = joTraceParam.value("InitVariancePosY").toString().toDouble();              //!< 初始方差-Y轴<initVariancePosY>：0.1
+        m_algParamInitVariancePosZ = joTraceParam.value("InitVariancePosZ").toString().toDouble();              //!< 初始方差-Z轴<initVariancePosZ>：0.0
+        m_algParamInitVarianceVelX = joTraceParam.value("InitVarianceVelX").toString().toDouble();              //!< 初始方差-X轴速度<initVarianceVelX>：10
+        m_algParamInitVarianceVelY = joTraceParam.value("InitVarianceVelY").toString().toDouble();              //!< 初始方差-Y轴速度<initVarianceVelY>：10
+        m_algParamInitVarianceVelZ = joTraceParam.value("InitVarianceVelZ").toString().toDouble();              //!< 初始方差-Z轴速度<initVarianceVelZ>：0.0
+        m_algParamInitVarianceAccX = joTraceParam.value("InitVarianceACCX").toString().toDouble();              //!< 初始方差-X轴加速度<initVarianceAccX>：0.1
+        m_algParamInitVarianceAccY = joTraceParam.value("InitVarianceACCY").toString().toDouble();              //!< 初始方差-Y轴加速度<initVarianceAccY>：0.1
+        m_algParamInitVarianceAccZ = joTraceParam.value("InitVarianceACCZ").toString().toDouble();              //!< 初始方差-Z轴加速度<initVarianceAccZ>：0.0
+        m_algParamInitVarianceHeading = joTraceParam.value("InitVarianceHeading").toString().toDouble();        //!< 初始方差-方向<initVarianceHeading>：2.46
+        m_algParamInitVarianceHeadingRate = joTraceParam.value("InitVarianceHeadingRate").toString().toDouble();//!< 初始方差-方向变化率<initVarianceHeadingRate>：0.1
 
         ret = true;
     } while (false);
