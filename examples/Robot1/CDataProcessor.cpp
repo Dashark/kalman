@@ -144,7 +144,9 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         // 加入Set并按照index排序
         inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
         if (lidar_ == nullptr) {
-            lidar_ = new KalmanTracking::NoneTracking(inSet,m_param);
+            VAR_PARAMS pa;
+            pa.distance = m_algParamDistanceLimit;
+            lidar_ = new KalmanTracking::LidarTracking(inSet,pa);
         }
         else {
             lidar_->tracking(inSet);
