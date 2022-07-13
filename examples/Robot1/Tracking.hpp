@@ -306,10 +306,11 @@ private:
      */
     void kalmanProcess(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     {
+        updateControl(left, right);
         //按照Lidar更新目标
-        left.x_speed = (left.x_speed + right.x_pos - left.x_pos) / 2;
-        left.y_speed = (left.y_speed + right.y_pos - left.y_pos) / 2;
-        left.z_speed = (left.z_speed + right.z_pos - left.z_pos) / 2;
+        left.x_speed = u_[left.index].dx() + u_[left.index].ddx();
+        left.y_speed = u_[left.index].dy() + u_[left.index].ddy();
+        left.z_speed = u_[left.index].dz() + u_[left.index].ddz();
         left.x_pos = right.x_pos;
         left.y_pos = right.y_pos;
         left.z_pos = right.z_pos;
@@ -318,7 +319,6 @@ private:
         left.height = (left.height + right.height) / 2;
         left.intensity = right.intensity;
 
-        updateControl(left, right);
         float eu_speed = std::sqrt(left.x_speed * left.x_speed + left.y_speed * left.y_speed);
         if (eu_speed > left.max_speed) {
             left.max_speed = eu_speed;
