@@ -109,7 +109,13 @@ typedef LidarTarget::SystemModel<T> SystemModel;
 typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
-
+class TrackingObject {
+    enum STATE {single, trackable, lost};
+    void getXY();
+    void predict();  // Kalman
+    void noised(float var); // 根据方差调整
+    
+};
 
 /**
  * @brief 基于Lidar的跟踪。
