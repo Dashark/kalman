@@ -456,12 +456,12 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 void updateControl(int index)
 {
     // 修正控制变量 u_
-    u_[obj.index].ddx = u_[obj.index].ddx + var_params_.var_acc_x * variance_(generator_);
-    u_[obj.index].ddy = u_[obj.index].ddy + var_params_.var_acc_y * variance_(generator_);
-    u_[obj.index].ddz = u_[obj.index].ddz + var_params_.var_acc_z * variance_(generator_);
-    u_[obj.index].dx = u_[obj.index].dx + var_params_.var_vel_x * variance_(generator_);
-    u_[obj.index].dy = u_[obj.index].dy + var_params_.var_vel_y * variance_(generator_);
-    u_[obj.index].dz = u_[obj.index].dz + var_params_.var_vel_z * variance_(generator_);
+    u_[index].ddx() = u_[index].ddx() + var_params_.var_acc_x * variance_(generator_);
+    u_[index].ddy() = u_[index].ddy() + var_params_.var_acc_y * variance_(generator_);
+    u_[index].ddz() = u_[index].ddz() + var_params_.var_acc_z * variance_(generator_);
+    u_[index].dx() = u_[index].dx() + var_params_.var_vel_x * variance_(generator_);
+    u_[index].dy() = u_[index].dy() + var_params_.var_vel_y * variance_(generator_);
+    u_[index].dz() = u_[index].dz() + var_params_.var_vel_z * variance_(generator_);
 }
 
 void updateControl(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)

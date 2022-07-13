@@ -142,9 +142,9 @@ public:
         x_.x() = x.x() + u.dx();
         x_.y() = x.y() + u.dy();
         x_.z() = x.z() + u.dz();
-        x_.length() = x.length() + u.dl();
-        x_.width() = x.width() + u.dw();
-        x_.height() = x.height() + u.dh();
+        x_.length() = x.length();
+        x_.width() = x.width();
+        x_.height() = x.height();
         x_.intensity() = x.intensity() + u.di();
         
         // Return transitioned state vector
