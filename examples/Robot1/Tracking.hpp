@@ -126,11 +126,81 @@ typedef LidarTarget::PositionMeasurement<T> PositionMeasurement;
 typedef LidarTarget::PositionMeasurementModel<T> PositionModel;
 
 class TrackingObject {
-    enum STATE {single, trackable, lost};
-    void getXY();
-    void predict();  // Kalman
-    void noised(float var); // 根据方差调整
-    
+    enum FLAG {single, trackable, lost} flag_;
+  public:
+    TrackingObject(const PV_OBJ_DATA &in) {
+        x_pos_ = in.x_pos;
+        y_pos_ = in.x_pos;
+        z_pos_ = in.x_pos;
+        length_ = in.length;
+        width_ = in.width;
+        height_ = in.height;
+        intensity_ = in.intensity;
+
+        x_speed_ = 0.0f;
+        y_speed_ = 0.0f;
+        z_speed_ = 0.0f;
+        x_acc_ = 0.0f;
+        y_acc_ = 0.0f;
+        z_acc_ = 0.0f;
+
+        flag_ = single;
+        //新目标，还需要其它信息计算变化量
+        State x << x_pos_, y_pos_, z_pos_,
+                    in.length, in.width, in.height,
+                    in.intensity;
+        //u_[temp.index].setZero(); // Kalman对象还没有控制变量
+        ukf_.init(x);
+    }
+    void getXY(float &x, float &y) const {
+        x = x_pos_;
+        y = y_pos_;
+    }
+    void trackingFirst(const PV_OBJ_DATA &in, SystemModel &sys) {
+        x_pos_ = in.x_pos;
+        y_pos_ = in.x_pos;
+        z_pos_ = in.x_pos;
+        x_speed_ = in.x_pos - x_pos_;
+        y_speed_ = in.y_pos - y_pos_;
+        z_speed_ = in.z_pos - z_pos_;
+        x_acc_ = 0.0f;
+        y_acc_ = 0.0f;
+        z_acc_ = 0.0f;
+
+        flag_ = trackable;
+
+        Control u << x_speed_, y_speed_, z_speed_, x_acc_, y_acc_, z_acc_, in.tensity;
+        ukf_.predict(sys, u);
+    }
+    void predict(SystemModel &sys) {
+        Control u << x_speed_, y_speed_, z_speed_, x_acc_, y_acc_, z_acc_, in.tensity;
+        State x = ukf_.predict(sys, u);
+        x_pos_ = x.x();
+        y_pos_ = x.y();
+        z_pos_ = x.z();
+
+        flag_ = lost;
+    }
+    void noised(float var) {
+        x_pos_ += var;
+        y_pos_ += var;
+        z_pos_ += var;
+    }
+    void update(PositionModel &pmm) {
+        PositionMeasurement m << ;
+        State x = ukf_.update(pmm, m);
+        x_pos_ = x.x();
+        y_pos_ = x.y();
+        z_pos_ = x.z();
+
+        flag_ = trackable;
+    }
+  private:
+    float x_pos_, y_pos_, z_pos_;
+    float length_, width_, height_, intensity_;
+    float x_speed_, y_speed_, z_speed_;
+    float x_acc_, y_acc_, z_acc_;
+    Kalman::UnscentedKalmanFilter<State> ukf_;
 };
 
 /**
