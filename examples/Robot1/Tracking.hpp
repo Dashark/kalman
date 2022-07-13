@@ -27,6 +27,16 @@ typedef struct {
     uint index;             // 目标临时编号
     char redis_key[40];     // UUID
     int intensity;        // 目标激光强度总和
+
+    float pt1_x;
+    float pt1_y;
+    float pt2_x;
+    float pt2_y;
+    float pt3_x;
+    float pt3_y;
+    float pt4_x;
+    float pt4_y;
+
     float width;            // 精度：0.01m
     float length;           // 精度：0.01m
     float height;           // 精度：0.01m
@@ -158,6 +168,7 @@ public:
 
         qint64 kalman_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         size_t left_size = prevTargets_.size();
+        if (matching.size() < left_size) return; // add for crash
         for (size_t i = 0; i < left_size; ++i) {
             int right = matching[i];
             auto eit = std::find_if(edges.begin(), edges.end(), findEdges(i, right));
@@ -445,12 +456,12 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 void updateControl(int index)
 {
     // 修正控制变量 u_
-    u_[obj.index].ddx = u_[obj.index].ddx + var_params_.var_acc_x * variance_(generator_);
-    u_[obj.index].ddy = u_[obj.index].ddy + var_params_.var_acc_y * variance_(generator_);
-    u_[obj.index].ddz = u_[obj.index].ddz + var_params_.var_acc_z * variance_(generator_);
-    u_[obj.index].dx = u_[obj.index].dx + var_params_.var_vel_x * variance_(generator_);
-    u_[obj.index].dy = u_[obj.index].dy + var_params_.var_vel_y * variance_(generator_);
-    u_[obj.index].dz = u_[obj.index].dz + var_params_.var_vel_z * variance_(generator_);
+    u_[index].ddx() = u_[index].ddx() + var_params_.var_acc_x * variance_(generator_);
+    u_[index].ddy() = u_[index].ddy() + var_params_.var_acc_y * variance_(generator_);
+    u_[index].ddz() = u_[index].ddz() + var_params_.var_acc_z * variance_(generator_);
+    u_[index].dx() = u_[index].dx() + var_params_.var_vel_x * variance_(generator_);
+    u_[index].dy() = u_[index].dy() + var_params_.var_vel_y * variance_(generator_);
+    u_[index].dz() = u_[index].dz() + var_params_.var_vel_z * variance_(generator_);
 }
 
 void updateControl(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
