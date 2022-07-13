@@ -70,6 +70,7 @@ struct SOut {
 
 // 方差列表
 typedef struct _VAR_PARAMS {
+    float distance;
     float var_pos_x;
     float var_pos_y;
     float var_pos_z;
@@ -82,6 +83,7 @@ typedef struct _VAR_PARAMS {
     float var_heading;
     float var_heading_rate;
     _VAR_PARAMS() {
+        distance = 5.0f;
         var_pos_x = sqrt(0.1f);
         var_pos_y = sqrt(0.1f);
         var_pos_z = 0.0f;
@@ -93,6 +95,20 @@ typedef struct _VAR_PARAMS {
         var_acc_z = 0.0f;
         var_heading = sqrt(2.46f);
         var_heading_rate = sqrt(0.1f);
+    }
+    _VAR_PARAMS(const _VAR_PARAMS &pa) {
+        distance = pa.distance;
+        var_pos_x = sqrt(pa.var_pos_x);
+        var_pos_y = sqrt(pa.var_pos_y);
+        var_pos_z = 0.0f;
+        var_vel_x = sqrt(pa.var_vel_x);
+        var_vel_y = sqrt(pa.var_vel_y);
+        var_vel_z = 0.0f;
+        var_acc_x = sqrt(pa.var_acc_x);
+        var_acc_y = sqrt(pa.var_acc_y);
+        var_acc_z = 0.0f;
+        var_heading = sqrt(pa.var_heading);
+        var_heading_rate = sqrt(pa.var_heading_rate);
     }
 } VAR_PARAMS;
 
@@ -138,6 +154,24 @@ public:
             spots_[data.index] = data.index;
         }
         threshold_ = threshold;
+        for (int i = 0; i < N; ++i) {
+            x_[i].setZero();
+            u_[i].setZero();
+        }
+
+        generator_.seed( std::chrono::system_clock::now().time_since_epoch().count() );
+    }
+    LidarTracking(const std::vector<PV_OBJ_DATA> &in, VAR_PARAMS &pa)
+        : prevTargets_(in), predicts_(N, 0), spots_(N, 0),
+         variance_(-1.0, 1.0), var_params_(pa) {
+        assert(!prevTargets_.empty());
+        // 构造里目标ID固定了，新目标要顺序编号
+        int i = 0;
+        for (PV_OBJ_DATA &data : prevTargets_) {
+            data.index = i ++;
+            spots_[data.index] = data.index;
+        }
+        threshold_ = pa.distance;
         for (int i = 0; i < N; ++i) {
             x_[i].setZero();
             u_[i].setZero();
@@ -241,6 +275,7 @@ private:
         if (temp.index < 0) false;   //没有空位则丢弃目标
         temp.track_times = 0;  // 新目标没有追踪
         spots_[temp.index] = 1 + *std::max_element(spots_.begin(), spots_.end());
+        temp.x_speed = temp.y_speed = temp.z_speed = 0.0f;
         prevTargets_.push_back(temp);
         dumpObj(temp, "New-first");
 
