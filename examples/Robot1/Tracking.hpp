@@ -453,6 +453,18 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     return 0.0f;
 }
 
+    /**
+     * @brief 速度的余弦距离
+     * 
+     * @return float 余弦距离[0, 2]
+     */
+    float cosDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right) {
+        Kalman::Vector<float, 2> leftv << left.x_speed, left.y_speed;
+        Kalman::Vector<float, 2> rightv << right.x_speed, right.y_speed;
+        leftv.normalize();
+        rightv.normalize();
+        return 1 - leftv.dot(rightv) / (leftv.norm() * rightv.norm());
+    }
 void updateControl(int index)
 {
     // 修正控制变量 u_
