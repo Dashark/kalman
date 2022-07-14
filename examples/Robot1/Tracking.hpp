@@ -386,6 +386,7 @@ private:
  * @param nextSet 后一次观测目标
  * @return std::vector<WeightedBipartiteEdge> 目标之间匹配的距离
  */
+template <typename DIST>
 std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &prevSet, const std::vector<PV_OBJ_DATA> &nextSet)
 {
     // 当前目标 next 与上一次目标 prev 的特征距离
@@ -398,7 +399,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             //dumpObj(nextSet[j], "New-edges");
             // 构造所有边的权重
             // if (d1 < threshold_)  // 阈值过滤
-                edges.push_back( WeightedBipartiteEdge(i, j, d1) );
+            edges.push_back( WeightedBipartiteEdge(i, j, d1) );
         }
         for (size_t j = nextSet.size(); j < prevSet.size(); ++j) {
             edges.push_back( WeightedBipartiteEdge(i, j, 1000.0f) );
