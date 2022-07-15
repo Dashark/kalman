@@ -84,7 +84,7 @@ typedef struct _VAR_PARAMS {
     float var_heading_rate;
     _VAR_PARAMS() {
         first_distance = 5.0f;
-        sec_distance = 1.0f;
+        sec_distance = 5.0f;
         cos_distance = 3.3f;
         var_pos_x = sqrt(0.1f);
         var_pos_y = sqrt(0.1f);
@@ -406,6 +406,14 @@ private:
         left.x_pos = right.x_pos;
         left.y_pos = right.y_pos;
         left.z_pos = right.z_pos;
+        left.pt1_x = right.pt1_x;
+        left.pt2_x = right.pt2_x;
+        left.pt3_x = right.pt3_x;
+        left.pt4_x = right.pt4_x;
+        left.pt1_y = right.pt1_y;
+        left.pt2_y = right.pt2_y;
+        left.pt3_y = right.pt3_y;
+        left.pt4_y = right.pt4_y;
         left.length = (left.length + right.length) / 2;
         left.width = (left.width + right.width) / 2;
         left.height = (left.height + right.height) / 2;
@@ -426,6 +434,15 @@ private:
         obj.x_speed = u_[obj.index].dx() + u_[obj.index].ddx();
         obj.y_speed = u_[obj.index].dy() + u_[obj.index].ddy();
         obj.z_speed = u_[obj.index].dz() + u_[obj.index].ddz();
+        // BBox也要移动
+        obj.pt1_x += next.x_pos - obj.x_pos;
+        obj.pt2_x += next.x_pos - obj.x_pos;
+        obj.pt3_x += next.x_pos - obj.x_pos;
+        obj.pt4_x += next.x_pos - obj.x_pos;
+        obj.pt1_y += next.y_pos - obj.y_pos;
+        obj.pt2_y += next.y_pos - obj.y_pos;
+        obj.pt3_y += next.y_pos - obj.y_pos;
+        obj.pt4_y += next.y_pos - obj.y_pos;
         obj.x_pos = next.x_pos;
         obj.y_pos = next.y_pos;
         obj.z_pos = next.z_pos;
