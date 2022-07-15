@@ -400,12 +400,12 @@ private:
                     right.intensity;
         x_[left.index] = ukf_[left.index].update(pmm_, measure);
         // 目标更新，观测结果right作为left的结果
-        left.x_speed = right.x_pos - left.x_pos; //[left.index].dx() + u_[left.index].ddx();
-        left.y_speed = right.x_pos - left.x_pos; //u_[left.index].dy() + u_[left.index].ddy();
-        left.z_speed = right.x_pos - left.x_pos; //u_[left.index].dz() + u_[left.index].ddz();
-        left.x_pos = right.x_pos;
-        left.y_pos = right.y_pos;
-        left.z_pos = right.z_pos;
+        left.x_speed = x_[left.index].x_pos - left.x_pos; //[left.index].dx() + u_[left.index].ddx();
+        left.y_speed = x_[left.index].y_pos - left.y_pos; //u_[left.index].dy() + u_[left.index].ddy();
+        left.z_speed = x_[left.index].z_pos - left.z_pos; //u_[left.index].dz() + u_[left.index].ddz();
+        left.x_pos = x_[left.index].x_pos;
+        left.y_pos = x_[left.index].y_pos;
+        left.z_pos = x_[left.index].z_pos;
         left.pt1_x = right.pt1_x;
         left.pt2_x = right.pt2_x;
         left.pt3_x = right.pt3_x;
@@ -414,10 +414,10 @@ private:
         left.pt2_y = right.pt2_y;
         left.pt3_y = right.pt3_y;
         left.pt4_y = right.pt4_y;
-        left.length = (left.length + right.length) / 2;
-        left.width = (left.width + right.width) / 2;
-        left.height = (left.height + right.height) / 2;
-        left.intensity = right.intensity;
+        left.length = (left.length + x_[left.index].length) / 2;
+        left.width = (left.width + x_[left.index].width) / 2;
+        left.height = (left.height + x_[left.index].height) / 2;
+        left.intensity = x_[left.index].intensity;
         predicts_[left.index] = 0;
         left.track_times += 1;
     }
