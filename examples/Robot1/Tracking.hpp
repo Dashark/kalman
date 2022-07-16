@@ -273,7 +273,8 @@ public:
         for (PV_OBJ_DATA &data : prevTargets_) {
             // data.index 要递增，递增的结果要保留，然后要替换
             // spots_中记录和查找最大值，*std::max_element()
-            if (data.track_times < 2) continue;
+            // 预测的结果不返回了
+            if (data.track_times < 2 || predicts_[data.index] != 0) continue;
             pOut[size] = data;
             pOut[size].index = spots_[data.index];
             size += 1;
