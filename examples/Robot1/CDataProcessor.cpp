@@ -56,7 +56,7 @@ bool CDataProcessor::Init()
 
         m_pTimer = new QTimer();
         connect(m_pTimer, &QTimer::timeout, this, &CDataProcessor::slotForTimeout);
-        m_pTimer->start(3000);
+        m_pTimer->start(1000);
 
         ret = true;
     } while (false);
@@ -84,36 +84,6 @@ bool CDataProcessor::Uninit()
     return ret;
 }
 
-static bool verifyData(SIn *pin)
-{
-    bool ret = false;
-    if (pin->m_obj_num <= 0)
-        return ret;
-    for (int i = 0; i < pin->m_obj_num; ++i) {
-        PV_OBJ_DATA *tp = pin->m_obj_data + i;
-        // just one attr is NAN or INF, discard the whole package.
-        if (!isnormal(tp->width))
-            return ret;
-        if (!isnormal(tp->height))
-            return ret;
-        if (!isnormal(tp->length))
-            return ret;
-        if (!isnormal(tp->x_pos))
-            return ret;
-        if (!isnormal(tp->y_pos))
-            return ret;
-        if (!isnormal(tp->z_pos))
-            return ret;
-        if (!isnormal(tp->x_speed))
-            return ret;
-        if (!isnormal(tp->y_speed))
-            return ret;
-        if (!isnormal(tp->z_speed))
-            return ret;
-    }
-    ret = true;
-    return ret;
-}
 #include <QMap>
 bool CDataProcessor::ProcessData(const QByteArray &in)
 {
@@ -144,9 +114,28 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         // 加入Set并按照index排序
         inSet.insert(inSet.end(), pIn->m_obj_data, pIn->m_obj_data+pIn->m_obj_num);
         if (lidar_ == nullptr) {
+#if 1
             VAR_PARAMS pa;
-            pa.distance = m_algParamDistanceLimit;
+            pa.first_distance = m_algParamDistanceLimit;
+            pa.sec_distance = m_param;
+            pa.cos_distance = m_algParamCosDistance;
+            pa.var_pos_x = m_algParamInitVariancePosX;
+            pa.var_pos_y = m_algParamInitVariancePosY;
+            pa.var_pos_z = m_algParamInitVariancePosZ;
+            pa.var_acc_x = m_algParamInitVarianceAccX;
+            pa.var_acc_y = m_algParamInitVarianceAccY;
+            pa.var_acc_z = m_algParamInitVarianceAccZ;
+            pa.var_vel_x = m_algParamInitVarianceVelX;
+            pa.var_vel_y = m_algParamInitVarianceVelY;
+            pa.var_vel_z = m_algParamInitVarianceVelZ;
+            pa.var_heading = m_algParamInitVarianceHeading;
+            pa.var_heading_rate = m_algParamInitVarianceHeadingRate;
             lidar_ = new KalmanTracking::LidarTracking(inSet,pa);
+#else
+
+            lidar_ = new KalmanTracking::LidarTracking(inSet,m_param);
+
+#endif
         }
         else {
             lidar_->tracking(inSet);
@@ -195,7 +184,8 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
         if (!m_pInterfaceManager->QueryInterface("IDataDispatcher", (void**)&pDataDispatcher)) break;
 
         // 这里，是进程内，插件间的数据分离，直接使用数据分发器，不通过共享内存
-        pDataDispatcher->Dispatch(INKey_AfterTrackingInfo, m_ba_objectinfo);
+        if (pOut->m_obj_num > 0)
+            pDataDispatcher->Dispatch(INKey_AfterTrackingInfo, m_ba_objectinfo);
         //pDataDispatcher->Dispatch("SOut2", out2);
 
 #endif
@@ -235,6 +225,11 @@ void CDataProcessor::slotForTimeout()
             break;
         }
 
+        if (!UpDateKalmanEffectiveParams())
+        {
+            break;
+        }
+
     } while (false);
 }
 
@@ -258,6 +253,7 @@ bool CDataProcessor::UpdateTrackParams()
         }
         QJsonObject joTraceParam = jdTrackParams.object();
 
+        m_algParamCosDistance = joTraceParam.value("CosDistance").toString().toDouble();                    //!< 速度距离
         m_algParamDistanceVector = joTraceParam.value("DistanceVector").toString();                             //!< 距离向量 缺省是X，Y值，可选 X轴速度，Y轴速度，强度。
         m_algParamDistanceLimit = joTraceParam.value("DistanceLimit").toString().toDouble();                    //!< 距离阈值
         m_algParamInitVariancePosX = joTraceParam.value("InitVariancePosX").toString().toDouble();              //!< 初始方差-X轴<initVariancePosX>：0.1
@@ -274,5 +270,142 @@ bool CDataProcessor::UpdateTrackParams()
 
         ret = true;
     } while (false);
+    return ret;
+}
+
+bool CDataProcessor::UpDateKalmanEffectiveParams()
+{
+    bool ret = false;
+    do {
+
+        QByteArray baKalmanEffectiveParams;
+        if (!m_pRedisClient->Get("KalmanEffectiveParams", baKalmanEffectiveParams))
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串找不到KalmanEffectiveParams");
+            break;
+        }
+        QString strKalmanEffectiveParams = QString::fromUtf8(baKalmanEffectiveParams);
+        qDebug() << Q_FUNC_INFO << strKalmanEffectiveParams;
+
+        QJsonDocument jdKalmanEffectiveParams = QJsonDocument::fromJson(strKalmanEffectiveParams.toUtf8());
+        if (jdKalmanEffectiveParams.isNull())
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串KalmanEffectiveParams不是合法的json");
+            break;
+        }
+        QJsonObject joKalmanEffectiveParams = jdKalmanEffectiveParams.object();
+
+        m_usingPosXInKalman = joKalmanEffectiveParams.value("PosX").toString() == "true";
+        m_usingPosYInKalman = joKalmanEffectiveParams.value("PosY").toString() == "true";
+        m_usingPosZInKalman = joKalmanEffectiveParams.value("PosZ").toString() == "true";
+        m_usingVelXInKalman = joKalmanEffectiveParams.value("VelX").toString() == "true";
+        m_usingVelYInKalman = joKalmanEffectiveParams.value("VelY").toString() == "true";
+        m_usingVelZInKalman = joKalmanEffectiveParams.value("VelZ").toString() == "true";
+        m_usingLenghtInKalman = joKalmanEffectiveParams.value("Length").toString() == "true";
+        m_usingWidthInKalman = joKalmanEffectiveParams.value("Width").toString() == "true";
+        m_usingHeightInKalman = joKalmanEffectiveParams.value("Height").toString() == "true";
+
+        ret = true;
+    } while (false);
+    return ret;
+}
+
+void CDataProcessor::changeInputData(SIn *pin)
+{
+    if (pin != nullptr)
+    {
+        for (int i = 0; i < pin->m_obj_num; ++i)
+        {
+            PV_OBJ_DATA *tp = pin->m_obj_data + i;
+
+            //!< 不在 卡尔曼过程中使用 X 坐标
+            if (!m_usingPosXInKalman)
+            {
+                tp->x_pos = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 Y 坐标
+            if (!m_usingPosYInKalman)
+            {
+                tp->y_pos = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 Z 坐标
+            if (!m_usingPosZInKalman)
+            {
+                tp->z_pos = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 X 速度
+            if (!m_usingVelXInKalman)
+            {
+                tp->x_speed = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 Y 速度
+            if (!m_usingVelYInKalman)
+            {
+                tp->y_speed = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 Z 速度
+            if (!m_usingVelZInKalman)
+            {
+                tp->z_speed = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 长度
+            if (!m_usingLenghtInKalman)
+            {
+                tp->length = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 宽度
+            if (!m_usingWidthInKalman)
+            {
+                tp->width = -10000.0f;
+            }
+
+            //!< 不在 卡尔曼过程中使用 高度
+            if (!m_usingHeightInKalman)
+            {
+                tp->height = -10000.0f;
+            }
+        }
+    }
+}
+
+bool CDataProcessor::verifyData(SIn *pin)
+{
+    bool ret = false;
+    if (pin->m_obj_num <= 0)
+        return ret;
+
+    // 根据卡尔曼参数，对输入数据做变更
+    changeInputData(pin);
+
+    for (int i = 0; i < pin->m_obj_num; ++i) {
+        PV_OBJ_DATA *tp = pin->m_obj_data + i;
+        // just one attr is NAN or INF, discard the whole package.
+        if (!isnormal(tp->width))
+            return ret;
+        if (!isnormal(tp->height))
+            return ret;
+        if (!isnormal(tp->length))
+            return ret;
+        if (!isnormal(tp->x_pos))
+            return ret;
+        if (!isnormal(tp->y_pos))
+            return ret;
+        if (!isnormal(tp->z_pos))
+            return ret;
+        if (!isnormal(tp->x_speed))
+            return ret;
+        if (!isnormal(tp->y_speed))
+            return ret;
+        if (!isnormal(tp->z_speed))
+            return ret;
+    }
+    ret = true;
     return ret;
 }

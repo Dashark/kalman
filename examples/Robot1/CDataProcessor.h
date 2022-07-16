@@ -31,6 +31,11 @@ private slots:
 
 private:
     bool UpdateTrackParams();
+    bool UpDateKalmanEffectiveParams();
+
+private:
+    void changeInputData(SIn *pin);
+    bool verifyData(SIn *pin);
 
 private:
     CPluginContext* m_pContext{nullptr};
@@ -47,6 +52,7 @@ private:
 
 private:
     bool        m_trackVisible{false};                  //!< 跟踪是否可见，是否执行跟踪计算
+    double      m_algParamCosDistance{0.0};             //!< 速度距离
     QString     m_algParamDistanceVector{""};           //!< 距离向量 缺省是X，Y值，可选 X轴速度，Y轴速度，强度。
     double      m_algParamDistanceLimit{0.0};           //!<
     double      m_algParamInitVariancePosX{0.1};        //!< 初始方差-X轴<initVariancePosX>：0.1
@@ -60,6 +66,16 @@ private:
     double      m_algParamInitVarianceAccZ{0.0};        //!< 初始方差-Z轴加速度<initVarianceAccZ>：0.0
     double      m_algParamInitVarianceHeading{2.46};    //!< 初始方差-方向<initVarianceHeading>：2.46
     double      m_algParamInitVarianceHeadingRate{0.1}; //!< 初始方差-方向变化率<initVarianceHeadingRate>：0.1
+
+    bool        m_usingPosXInKalman{false};             //!< 卡尔曼过程中使用 X 坐标
+    bool        m_usingPosYInKalman{false};             //!< 卡尔曼过程中使用 Y 坐标
+    bool        m_usingPosZInKalman{false};             //!< 卡尔曼过程中使用 Z 坐标
+    bool        m_usingVelXInKalman{false};             //!< 卡尔曼过程中使用 X 速度
+    bool        m_usingVelYInKalman{false};             //!< 卡尔曼过程中使用 Y 速度
+    bool        m_usingVelZInKalman{false};             //!< 卡尔曼过程中使用 Z 速度
+    bool        m_usingLenghtInKalman{false};
+    bool        m_usingWidthInKalman{false};
+    bool        m_usingHeightInKalman{false};
 };
 
 #endif // CDATAPROCESSOR_H
