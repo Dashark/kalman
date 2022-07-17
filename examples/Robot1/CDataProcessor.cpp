@@ -5,6 +5,7 @@
 #include <QJsonValue>
 #include <math.h>
 #include "IDataDispatcher.h"
+#include "IGlobalVariableManager.h"
 
 int KalmanTracking::LidarTracking::frames = 0;
 
@@ -13,6 +14,7 @@ CDataProcessor::CDataProcessor(CPluginContext *pContext, IInterfaceManager *pInt
     : QObject(nullptr)
     , m_pContext(pContext)
     , m_pInterfaceManager(pInterfaceManager)
+    , m_pGlobalVariableHelper(nullptr)
 {
     // TOOD: 算法本身，需要在这里，从插件的配置文件中，将需要的参数解析出来，
     //       存成成员变量，以便在 ProcessData 函数中使用
@@ -30,11 +32,54 @@ bool CDataProcessor::Init()
 {
     bool ret = false;
     do {
+        if (m_pInterfaceManager == nullptr) break;
+
         m_pRedisClient = new CRedisClient();
         if (!m_pRedisClient->Init())
         {
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis客户端初始化失败");
             m_pRedisClient = nullptr;
+        }
+
+        // 初始化全局变量监听
+        {
+            m_pGlobalVariableHelper = new CGlobalVariableHelper(m_pContext, m_pInterfaceManager);
+            if (!m_pGlobalVariableHelper->Init())
+            {
+                break;
+            }
+            connect(m_pGlobalVariableHelper, &CGlobalVariableHelper::signalForGlobalVariablesChanged,
+                    this, &CDataProcessor::SlotForGlobalVariablesChanged, Qt::QueuedConnection);
+
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:CosDistance", &m_algParamCosDistance);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:DistanceVector", &m_algParamDistanceVector);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:DistanceLimit", &m_algParamDistanceLimit);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVariancePosX", &m_algParamInitVariancePosX);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVariancePosY", &m_algParamInitVariancePosY);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVariancePosZ", &m_algParamInitVariancePosZ);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceVelX", &m_algParamInitVarianceVelX);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceVelY", &m_algParamInitVarianceVelY);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceVelZ", &m_algParamInitVarianceVelZ);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceACCX", &m_algParamInitVarianceAccX);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceACCY", &m_algParamInitVarianceAccY);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceACCZ", &m_algParamInitVarianceAccZ);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceHeading", &m_algParamInitVarianceHeading);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:InitVarianceHeadingRate", &m_algParamInitVarianceHeadingRate);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:MinTrackNum", &m_algParamMinTrackNum);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:MinPredictNum", &m_algParamMinPredictNum);
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackParams:MinPredictShow", &m_algParamMinPredictShow);
+
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:PosX", &m_usingPosXInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:PosY", &m_usingPosYInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:PosZ", &m_usingPosZInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:VelX", &m_usingVelXInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:VelY", &m_usingVelYInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:VelZ", &m_usingVelZInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:Length", &m_usingLenghtInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:Width", &m_usingWidthInKalman);
+            m_pGlobalVariableHelper->BindGlobalVariable("KalmanEffectiveParams:Height", &m_usingHeightInKalman);
+
+            m_pGlobalVariableHelper->BindGlobalVariable("TrackVisible", &m_trackVisible);
         }
 
         // 轨迹不可见时，不启动跟踪服务
@@ -79,6 +124,12 @@ bool CDataProcessor::Uninit()
             m_pRedisClient->deleteLater();
             m_pRedisClient = nullptr;
         }
+        if (m_pGlobalVariableHelper != nullptr)
+        {
+            m_pGlobalVariableHelper->Uninit();
+            m_pGlobalVariableHelper->deleteLater();
+            m_pGlobalVariableHelper = nullptr;
+        }
         ret = true;
     } while (false);
     return ret;
@@ -90,9 +141,25 @@ bool CDataProcessor::ProcessData(const QByteArray &in)
     bool ret = false;
 
     do {
+
         if (m_pContext == nullptr)
         {
             break;
+        }
+
+        // 更新所有绑定了的全局变量
+        {
+            if (m_pGlobalVariableHelper == nullptr)
+            {
+                break;
+            }
+            IGlobalVariableManager* pGlobalVariableManager = nullptr;
+            if (!m_pInterfaceManager->QueryInterface("IGlobalVariableManager", (void**)&pGlobalVariableManager))
+            {
+                break;
+            }
+
+            m_pGlobalVariableHelper->UpdateAllBindGlobalVariables();
         }
 
         if (!m_trackVisible)
@@ -212,27 +279,59 @@ void CDataProcessor::slotForTimeout()
                 break;
             }
 
-            QString strIn = QString::fromUtf8(ba_in);
-            if (strIn == "false")
+            QString strTrackVisible = QString::fromUtf8(ba_in);
+
+            IGlobalVariableManager* pGlobalVariableManager = nullptr;
+            if (!m_pInterfaceManager->QueryInterface("IGlobalVariableManager", (void**)&pGlobalVariableManager))
             {
-                qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackVisible非true，结束跟踪服务");
                 break;
             }
-            m_trackVisible = true;
-        }
 
+            pGlobalVariableManager->SetGlobalVariable("TrackVisible", "bool", strTrackVisible);
+
+        }
+    } while (false);
+
+    do {
         // 获取跟踪计算算法参数
         if (!UpdateTrackParams())
         {
             break;
         }
+    } while (false);
 
+    do {
         if (!UpDateKalmanEffectiveParams())
         {
             break;
         }
-
     } while (false);
+
+}
+
+void CDataProcessor::SlotForGlobalVariablesChanged()
+{
+    m_pGlobalVariableHelper->UpdateAllBindGlobalVariables();
+    qDebug() << Q_FUNC_INFO
+             << "m_algParamMinTrackNum = " << m_algParamMinTrackNum
+             << ", m_algParamMinPredictNum = " << m_algParamMinPredictNum
+             << ", m_algParamMinPredictShow = " << m_algParamMinPredictShow;
+    VAR_PARAMS pa;
+    pa.first_distance = m_algParamDistanceLimit;
+    pa.sec_distance = m_param;
+    pa.cos_distance = m_algParamCosDistance;
+    pa.var_pos_x = m_algParamInitVariancePosX;
+    pa.var_pos_y = m_algParamInitVariancePosY;
+    pa.var_pos_z = m_algParamInitVariancePosZ;
+    pa.var_acc_x = m_algParamInitVarianceAccX;
+    pa.var_acc_y = m_algParamInitVarianceAccY;
+    pa.var_acc_z = m_algParamInitVarianceAccZ;
+    pa.var_vel_x = m_algParamInitVarianceVelX;
+    pa.var_vel_y = m_algParamInitVarianceVelY;
+    pa.var_vel_z = m_algParamInitVarianceVelZ;
+    pa.var_heading = m_algParamInitVarianceHeading;
+    pa.var_heading_rate = m_algParamInitVarianceHeadingRate;
+    lidar_->modifyParams(pa);
 }
 
 bool CDataProcessor::UpdateTrackParams()
@@ -246,29 +345,49 @@ bool CDataProcessor::UpdateTrackParams()
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串找不到TrackParams");
             break;
         }
-
-        QJsonDocument jdTrackParams = QJsonDocument::fromJson(baTrackParams);
-        if (!jdTrackParams.isNull())
+        if (baTrackParams.at(baTrackParams.size()-1) == 0)
+        {
+            baTrackParams = baTrackParams.mid(0, baTrackParams.size()-1);
+        }
+        QJsonParseError error;
+        QJsonDocument jdTrackParams = QJsonDocument::fromJson(baTrackParams, &error);
+        if (jdTrackParams.isNull())
+        {
+            qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackParams不是合法的json");
+            qWarning() << Q_FUNC_INFO << error.errorString();
+            break;
+        }
+        QJsonObject joTraceParam = jdTrackParams.object();
+        if (joTraceParam.isEmpty())
         {
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串TrackParams不是合法的json");
             break;
         }
-        QJsonObject joTraceParam = jdTrackParams.object();
 
-        m_algParamCosDistance = joTraceParam.value("CosDistance").toString().toDouble();                    //!< 速度距离
-        m_algParamDistanceVector = joTraceParam.value("DistanceVector").toString();                             //!< 距离向量 缺省是X，Y值，可选 X轴速度，Y轴速度，强度。
-        m_algParamDistanceLimit = joTraceParam.value("DistanceLimit").toString().toDouble();                    //!< 距离阈值
-        m_algParamInitVariancePosX = joTraceParam.value("InitVariancePosX").toString().toDouble();              //!< 初始方差-X轴<initVariancePosX>：0.1
-        m_algParamInitVariancePosY = joTraceParam.value("InitVariancePosY").toString().toDouble();              //!< 初始方差-Y轴<initVariancePosY>：0.1
-        m_algParamInitVariancePosZ = joTraceParam.value("InitVariancePosZ").toString().toDouble();              //!< 初始方差-Z轴<initVariancePosZ>：0.0
-        m_algParamInitVarianceVelX = joTraceParam.value("InitVarianceVelX").toString().toDouble();              //!< 初始方差-X轴速度<initVarianceVelX>：10
-        m_algParamInitVarianceVelY = joTraceParam.value("InitVarianceVelY").toString().toDouble();              //!< 初始方差-Y轴速度<initVarianceVelY>：10
-        m_algParamInitVarianceVelZ = joTraceParam.value("InitVarianceVelZ").toString().toDouble();              //!< 初始方差-Z轴速度<initVarianceVelZ>：0.0
-        m_algParamInitVarianceAccX = joTraceParam.value("InitVarianceACCX").toString().toDouble();              //!< 初始方差-X轴加速度<initVarianceAccX>：0.1
-        m_algParamInitVarianceAccY = joTraceParam.value("InitVarianceACCY").toString().toDouble();              //!< 初始方差-Y轴加速度<initVarianceAccY>：0.1
-        m_algParamInitVarianceAccZ = joTraceParam.value("InitVarianceACCZ").toString().toDouble();              //!< 初始方差-Z轴加速度<initVarianceAccZ>：0.0
-        m_algParamInitVarianceHeading = joTraceParam.value("InitVarianceHeading").toString().toDouble();        //!< 初始方差-方向<initVarianceHeading>：2.46
-        m_algParamInitVarianceHeadingRate = joTraceParam.value("InitVarianceHeadingRate").toString().toDouble();//!< 初始方差-方向变化率<initVarianceHeadingRate>：0.1
+        IGlobalVariableManager* pGlobalVariableManager = nullptr;
+        if (!m_pInterfaceManager->QueryInterface("IGlobalVariableManager", (void**)&pGlobalVariableManager))
+        {
+            break;
+        }
+
+        //TODO: 修正pview端，每个变量使用一个redis字符串，简化逻辑
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:MinTrackNum", "int", joTraceParam.value("MinTrackNum").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:MinPredictNum", "int", joTraceParam.value("MinPredictNum").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:MinPredictShow", "int", joTraceParam.value("MinPredictShow").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:CosDistance", "double", joTraceParam.value("CosDistance").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:DistanceVector", "string", joTraceParam.value("DistanceVector").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:DistanceLimit", "double", joTraceParam.value("DistanceLimit").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVariancePosX", "double", joTraceParam.value("InitVariancePosX").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVariancePosY", "double", joTraceParam.value("InitVariancePosY").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVariancePosZ", "double", joTraceParam.value("InitVariancePosZ").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceVelX", "double", joTraceParam.value("InitVarianceVelX").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceVelY", "double", joTraceParam.value("InitVarianceVelY").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceVelZ", "double", joTraceParam.value("InitVarianceVelZ").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceACCX", "double", joTraceParam.value("InitVarianceACCX").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceACCY", "double", joTraceParam.value("InitVarianceACCY").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceACCZ", "double", joTraceParam.value("InitVarianceACCZ").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceHeading", "double", joTraceParam.value("InitVarianceHeading").toString());
+        pGlobalVariableManager->SetGlobalVariable("TrackParams:InitVarianceHeadingRate", "double", joTraceParam.value("InitVarianceHeadingRate").toString());
 
         ret = true;
     } while (false);
@@ -286,6 +405,10 @@ bool CDataProcessor::UpDateKalmanEffectiveParams()
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串找不到KalmanEffectiveParams");
             break;
         }
+        if (baKalmanEffectiveParams.at(baKalmanEffectiveParams.size()-1) == 0)
+        {
+            baKalmanEffectiveParams = baKalmanEffectiveParams.mid(0, baKalmanEffectiveParams.size()-1);
+        }
         QString strKalmanEffectiveParams = QString::fromUtf8(baKalmanEffectiveParams);
         qDebug() << Q_FUNC_INFO << strKalmanEffectiveParams;
 
@@ -295,17 +418,25 @@ bool CDataProcessor::UpDateKalmanEffectiveParams()
             qWarning() << Q_FUNC_INFO << QString::fromUtf8("redis字符串KalmanEffectiveParams不是合法的json");
             break;
         }
+
+        IGlobalVariableManager* pGlobalVariableManager = nullptr;
+        if (!m_pInterfaceManager->QueryInterface("IGlobalVariableManager", (void**)&pGlobalVariableManager))
+        {
+            break;
+        }
+
         QJsonObject joKalmanEffectiveParams = jdKalmanEffectiveParams.object();
 
-        m_usingPosXInKalman = joKalmanEffectiveParams.value("PosX").toString() == "true";
-        m_usingPosYInKalman = joKalmanEffectiveParams.value("PosY").toString() == "true";
-        m_usingPosZInKalman = joKalmanEffectiveParams.value("PosZ").toString() == "true";
-        m_usingVelXInKalman = joKalmanEffectiveParams.value("VelX").toString() == "true";
-        m_usingVelYInKalman = joKalmanEffectiveParams.value("VelY").toString() == "true";
-        m_usingVelZInKalman = joKalmanEffectiveParams.value("VelZ").toString() == "true";
-        m_usingLenghtInKalman = joKalmanEffectiveParams.value("Length").toString() == "true";
-        m_usingWidthInKalman = joKalmanEffectiveParams.value("Width").toString() == "true";
-        m_usingHeightInKalman = joKalmanEffectiveParams.value("Height").toString() == "true";
+        //TODO: 修正pview端，每个变量使用一个redis字符串，简化逻辑
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:PosX", "bool", joKalmanEffectiveParams.value("PosX").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:PosY", "bool", joKalmanEffectiveParams.value("PosY").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:PosZ", "bool", joKalmanEffectiveParams.value("PosZ").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:VelX", "bool", joKalmanEffectiveParams.value("VelX").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:VelY", "bool", joKalmanEffectiveParams.value("VelY").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:VelZ", "bool", joKalmanEffectiveParams.value("VelZ").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:Length", "bool", joKalmanEffectiveParams.value("Length").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:Width", "bool", joKalmanEffectiveParams.value("Width").toString());
+        pGlobalVariableManager->SetGlobalVariable("KalmanEffectiveParams:Height", "bool", joKalmanEffectiveParams.value("Height").toString());
 
         ret = true;
     } while (false);
@@ -380,7 +511,7 @@ void CDataProcessor::changeInputData(SIn *pin)
 bool CDataProcessor::verifyData(SIn *pin)
 {
     bool ret = false;
-    if (pin->m_obj_num < 0)
+    if (pin->m_obj_num <= 0)
         return ret;
 
     for (int i = 0; i < pin->m_obj_num; ++i) {
