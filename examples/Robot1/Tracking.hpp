@@ -114,6 +114,22 @@ typedef struct _VAR_PARAMS {
         var_heading = sqrt(pa.var_heading);
         var_heading_rate = sqrt(pa.var_heading_rate);
     }
+    void modify(const _VAR_PARAMS &pa) {
+        first_distance = pa.first_distance;
+        sec_distance = pa.sec_distance;
+        cos_distance = pa.cos_distance;
+        var_pos_x = sqrt(pa.var_pos_x);
+        var_pos_y = sqrt(pa.var_pos_y);
+        var_pos_z = 0.0f;
+        var_vel_x = sqrt(pa.var_vel_x);
+        var_vel_y = sqrt(pa.var_vel_y);
+        var_vel_z = 0.0f;
+        var_acc_x = sqrt(pa.var_acc_x);
+        var_acc_y = sqrt(pa.var_acc_y);
+        var_acc_z = 0.0f;
+        var_heading = sqrt(pa.var_heading);
+        var_heading_rate = sqrt(pa.var_heading_rate);
+    }
 } VAR_PARAMS;
 
 namespace KalmanTracking
@@ -178,6 +194,9 @@ public:
         generator_.seed( std::chrono::system_clock::now().time_since_epoch().count() );
     }
     virtual ~LidarTracking(){}
+    void modifyParams(const VAR_PARAMS &pa) {
+        var_params_.modify(pa);
+    }
     /**
      * @brief 二分图算法匹配，第三方算法。
      *
