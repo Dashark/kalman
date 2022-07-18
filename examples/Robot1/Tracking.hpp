@@ -289,7 +289,7 @@ public:
         //TEST***
         kalmanElapsedTime();
         qint64 erase_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_, min_predict_num)), prevTargets_.end());
+        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_, var_params_.min_predict_num)), prevTargets_.end());
         std::sort(prevTargets_.begin(), prevTargets_.end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
         for (auto &tar : prevTargets_)
             dumpObj(tar, "Results");
