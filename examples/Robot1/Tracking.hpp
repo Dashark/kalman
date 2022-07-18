@@ -71,6 +71,7 @@ struct SOut {
 // 方差列表
 typedef struct _VAR_PARAMS {
     float first_distance, sec_distance, cos_distance;
+    int min_tracking_num, min_predict_num, min_predict_show;
     float var_pos_x;
     float var_pos_y;
     float var_pos_z;
@@ -86,6 +87,9 @@ typedef struct _VAR_PARAMS {
         first_distance = 5.0f;
         sec_distance = 5.0f;
         cos_distance = 3.3f;
+        min_tracking_num = 3;
+        min_predict_num = 10;
+        min_predict_show = 1;
         var_pos_x = sqrt(0.1f);
         var_pos_y = sqrt(0.1f);
         var_pos_z = 0.0f;
@@ -102,6 +106,9 @@ typedef struct _VAR_PARAMS {
         first_distance = pa.first_distance;
         sec_distance = pa.sec_distance;
         cos_distance = pa.cos_distance;
+        min_tracking_num = pa.min_tracking_num;
+        min_predict_num = pa.min_predict_num;
+        min_predict_show = pa.min_predict_show;
         var_pos_x = sqrt(pa.var_pos_x);
         var_pos_y = sqrt(pa.var_pos_y);
         var_pos_z = 0.0f;
@@ -118,6 +125,9 @@ typedef struct _VAR_PARAMS {
         first_distance = pa.first_distance;
         sec_distance = pa.sec_distance;
         cos_distance = pa.cos_distance;
+        min_tracking_num = pa.min_tracking_num;
+        min_predict_num = pa.min_predict_num;
+        min_predict_show = pa.min_predict_show;
         var_pos_x = sqrt(pa.var_pos_x);
         var_pos_y = sqrt(pa.var_pos_y);
         var_pos_z = 0.0f;
@@ -236,7 +246,7 @@ public:
             assert(eit != edges.end());
             if (predictTargets[i].track_times == 0 
                 && eit->cost < var_params_.first_distance
-                && eit->cost > 0.2) {
+                && eit->cost > 0.0f) {
                 // 新目标的跟踪
                 kalmanFirst(prevTargets_[i], in[right]);
                 memcpy(prevTargets_[i].redis_key, in[right].redis_key, 40);
@@ -279,7 +289,7 @@ public:
         //TEST***
         kalmanElapsedTime();
         qint64 erase_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
+        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_, min_predict_num)), prevTargets_.end());
         std::sort(prevTargets_.begin(), prevTargets_.end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
         for (auto &tar : prevTargets_)
             dumpObj(tar, "Results");
@@ -293,7 +303,8 @@ public:
             // data.index 要递增，递增的结果要保留，然后要替换
             // spots_中记录和查找最大值，*std::max_element()
             // 预测的结果不返回了
-            if (data.track_times < 2 || predicts_[data.index] != 0) continue;
+            if (data.track_times < var_params_.min_tracking_num || predicts_[data.index] > var_params_.min_predict_show)
+                continue;
             pOut[size] = data;
             pOut[size].index = spots_[data.index];
             size += 1;
@@ -359,18 +370,20 @@ private:
      * 
      */
     struct removeKalman {
-        removeKalman(std::vector<int> *pred) {
+        removeKalman(std::vector<int> *pred, int hold) {
             preds = pred;
+            theshold = hold;
         }
         bool operator() (const PV_OBJ_DATA &data)
         {
-            if ((*preds)[data.index] > 10) {
+            if ((*preds)[data.index] > theshold) {
                 (*preds)[data.index] = 0;
                 return true;
             }
             return false;
         }
         std::vector<int> *preds;
+        int theshold;
     };
     void kalmanFirst(PV_OBJ_DATA &left, const PV_OBJ_DATA &right) {
         left.x_speed = right.x_pos - left.x_pos;
