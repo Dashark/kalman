@@ -240,7 +240,8 @@ public:
         qint64 kalman_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         size_t left_size = prevTargets_.size();
         if (matching.size() < left_size) return; // add for crash
-        for (size_t i = 0; i < left_size; ++i) {
+        size_t i = 0;
+        for (i = 0; i < left_size; ++i) {
             int right = matching[i];
             auto eit = std::find_if(edges.begin(), edges.end(), findEdges(i, right));
             assert(eit != edges.end());
@@ -282,6 +283,12 @@ public:
                     newTarget(in[right]);
                 }
                 kalman_elapsed_predict_ += 1;
+            }
+        }
+        for ( i; i < matching.size(); ++i) {
+            int right = matching[i];
+            if (right < in.size()) {  // left 是假目标则 right 是新目标 
+                newTarget(in[right]);
             }
         }
         qint64 kalman_t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
