@@ -70,7 +70,8 @@ struct SOut {
 
 // 方差列表
 typedef struct _VAR_PARAMS {
-    float distance;
+    float first_distance, sec_distance, cos_distance;
+    int min_tracking_num, min_predict_num, min_predict_show;
     float var_pos_x;
     float var_pos_y;
     float var_pos_z;
@@ -83,7 +84,12 @@ typedef struct _VAR_PARAMS {
     float var_heading;
     float var_heading_rate;
     _VAR_PARAMS() {
-        distance = 5.0f;
+        first_distance = 5.0f;
+        sec_distance = 5.0f;
+        cos_distance = 3.3f;
+        min_tracking_num = 3;
+        min_predict_num = 10;
+        min_predict_show = 1;
         var_pos_x = sqrt(0.1f);
         var_pos_y = sqrt(0.1f);
         var_pos_z = 0.0f;
@@ -97,7 +103,31 @@ typedef struct _VAR_PARAMS {
         var_heading_rate = sqrt(0.1f);
     }
     _VAR_PARAMS(const _VAR_PARAMS &pa) {
-        distance = pa.distance;
+        first_distance = pa.first_distance;
+        sec_distance = pa.sec_distance;
+        cos_distance = pa.cos_distance;
+        min_tracking_num = pa.min_tracking_num;
+        min_predict_num = pa.min_predict_num;
+        min_predict_show = pa.min_predict_show;
+        var_pos_x = sqrt(pa.var_pos_x);
+        var_pos_y = sqrt(pa.var_pos_y);
+        var_pos_z = 0.0f;
+        var_vel_x = sqrt(pa.var_vel_x);
+        var_vel_y = sqrt(pa.var_vel_y);
+        var_vel_z = 0.0f;
+        var_acc_x = sqrt(pa.var_acc_x);
+        var_acc_y = sqrt(pa.var_acc_y);
+        var_acc_z = 0.0f;
+        var_heading = sqrt(pa.var_heading);
+        var_heading_rate = sqrt(pa.var_heading_rate);
+    }
+    void modify(const _VAR_PARAMS &pa) {
+        first_distance = pa.first_distance;
+        sec_distance = pa.sec_distance;
+        cos_distance = pa.cos_distance;
+        min_tracking_num = pa.min_tracking_num;
+        min_predict_num = pa.min_predict_num;
+        min_predict_show = pa.min_predict_show;
         var_pos_x = sqrt(pa.var_pos_x);
         var_pos_y = sqrt(pa.var_pos_y);
         var_pos_z = 0.0f;
@@ -241,7 +271,7 @@ public:
             data.index = i ++;
             spots_[data.index] = data.index;
         }
-        threshold_ = pa.distance;
+        threshold_ = pa.first_distance;
         for (int i = 0; i < N; ++i) {
             x_[i].setZero();
             u_[i].setZero();
@@ -250,6 +280,9 @@ public:
         generator_.seed( std::chrono::system_clock::now().time_since_epoch().count() );
     }
     virtual ~LidarTracking(){}
+    void modifyParams(const VAR_PARAMS &pa) {
+        var_params_.modify(pa);
+    }
     /**
      * @brief 二分图算法匹配，第三方算法。
      *
@@ -261,8 +294,12 @@ public:
         assert(!in.empty());
         frames += 1;
         qint64 edges_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
+        std::vector<PV_OBJ_DATA> predictTargets;
+        for(PV_OBJ_DATA &obj : prevTargets_) {
+            predictTargets.push_back(kalmanPredict(obj));
+        }
         // 匹配最优的目标组合
-        std::vector<WeightedBipartiteEdge> edges = createEdges(prevTargets_, in);
+        std::vector<WeightedBipartiteEdge> edges = createEdges(predictTargets, in);
         // 二分最优匹配
         int nodes = prevTargets_.size() < in.size() ? in.size() : prevTargets_.size();
         std::vector<int> matching = hungarianMinimumWeightPerfectMatching(nodes, edges);
@@ -279,24 +316,55 @@ public:
         qint64 kalman_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
         size_t left_size = prevTargets_.size();
         if (matching.size() < left_size) return; // add for crash
-        for (size_t i = 0; i < left_size; ++i) {
+        size_t i = 0;
+        for (i = 0; i < left_size; ++i) {
             int right = matching[i];
             auto eit = std::find_if(edges.begin(), edges.end(), findEdges(i, right));
             assert(eit != edges.end());
-            if (eit->cost < threshold_) {
-                kalmanProcess(prevTargets_[i], in[right]);
+            if (predictTargets[i].track_times == 0 
+                && eit->cost < var_params_.first_distance
+                && eit->cost > 0.0f) {
+                // 新目标的跟踪
+                kalmanFirst(prevTargets_[i], in[right]);
                 memcpy(prevTargets_[i].redis_key, in[right].redis_key, 40);
                 dumpObj(prevTargets_[i], "Old-track");
                 dumpObj(in[right], "New-track");
                 kalman_elapsed_update_ += 1;
             }
+            else if (predictTargets[i].track_times != 0 && eit->cost < var_params_.sec_distance) {
+                // 旧目标经过预测后配上观测目标
+                PV_OBJ_DATA temp = in[right];
+                temp.x_speed = in[right].x_pos - prevTargets_[i].x_pos + 0.0001;
+                temp.y_speed = in[right].y_pos - prevTargets_[i].y_pos + 0.0001;
+                float dist = cosDistance(predictTargets[i], temp);  //观测 vs. 预测 = 余弦距离
+                if (dist < var_params_.cos_distance) {
+                    // Kalman update
+                    updateControl(prevTargets_[i], in[right]);  //观测 vs. 目标
+                    kalmanUpdate(prevTargets_[i], in[right]);
+                }
+                else {
+                    // 会奇怪不能满足条件的
+                    kalmanProcess(prevTargets_[i], predictTargets[i]);
+                    dumpObj(prevTargets_[i], "Old-pred");
+                    if (right < in.size()) {  // 不符合条件，成为新目标
+                        newTarget(in[right]);
+                    }
+                    kalman_elapsed_predict_ += 1;
+                }
+            }
             else {
-                kalmanProcess(prevTargets_[i]);
+                kalmanProcess(prevTargets_[i], predictTargets[i]);
                 dumpObj(prevTargets_[i], "Old-pred");
-                if (right < in.size()) {
+                if (right < in.size()) {  // 不符合条件，成为新目标
                     newTarget(in[right]);
                 }
                 kalman_elapsed_predict_ += 1;
+            }
+        }
+        for ( i; i < matching.size(); ++i) {
+            int right = matching[i];
+            if (right < in.size()) {  // left 是假目标则 right 是新目标 
+                newTarget(in[right]);
             }
         }
         qint64 kalman_t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
@@ -304,7 +372,7 @@ public:
         //TEST***
         kalmanElapsedTime();
         qint64 erase_t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_)), prevTargets_.end());
+        prevTargets_.erase(std::remove_if(prevTargets_.begin(), prevTargets_.end(), removeKalman(&predicts_, var_params_.min_predict_num)), prevTargets_.end());
         std::sort(prevTargets_.begin(), prevTargets_.end(), [](const PV_OBJ_DATA &a, const PV_OBJ_DATA &b) { return a.index < b.index; });
         for (auto &tar : prevTargets_)
             dumpObj(tar, "Results");
@@ -317,6 +385,9 @@ public:
         for (PV_OBJ_DATA &data : prevTargets_) {
             // data.index 要递增，递增的结果要保留，然后要替换
             // spots_中记录和查找最大值，*std::max_element()
+            // 预测的结果不返回了
+            if (data.track_times < var_params_.min_tracking_num || predicts_[data.index] > var_params_.min_predict_show)
+                continue;
             pOut[size] = data;
             pOut[size].index = spots_[data.index];
             size += 1;
@@ -382,86 +453,123 @@ private:
      * 
      */
     struct removeKalman {
-        removeKalman(std::vector<int> *pred) {
+        removeKalman(std::vector<int> *pred, int hold) {
             preds = pred;
+            theshold = hold;
         }
         bool operator() (const PV_OBJ_DATA &data)
         {
-            if ((*preds)[data.index] > 10) {
+            if ((*preds)[data.index] > theshold) {
                 (*preds)[data.index] = 0;
                 return true;
             }
             return false;
         }
         std::vector<int> *preds;
+        int theshold;
     };
+    void kalmanFirst(PV_OBJ_DATA &left, const PV_OBJ_DATA &right) {
+        left.x_speed = right.x_pos - left.x_pos;
+        left.y_speed = right.y_pos - left.y_pos;
+        left.z_speed = right.z_pos - left.z_pos;
+        left.x_pos = right.x_pos;
+        left.y_pos = right.y_pos;
+        left.z_pos = right.z_pos;
+
+        u_[left.index].dx() = left.x_speed;
+        u_[left.index].dy() = left.y_speed;
+        u_[left.index].dz() = left.z_speed;
+
+        left.track_times += 1;
+    }
     /**
-     * @brief 通过Kalman预测更新目标，同时预测+1
+     * @brief 预测目标的新对象，原目标不变，其它都不改变
+     * 
+     * @param obj 原目标
+     * @return PV_OBJ_DATA 预测的目标新状态
+     */
+    PV_OBJ_DATA kalmanPredict(PV_OBJ_DATA &obj) {
+        assert(obj.index < N);
+        x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
+
+        PV_OBJ_DATA newObj = obj;
+        newObj.x_pos = x_[obj.index].x();
+        newObj.y_pos = x_[obj.index].y();
+        newObj.z_pos = x_[obj.index].z();
+        newObj.x_speed = x_[obj.index].x() - obj.x_pos;
+        newObj.y_speed = x_[obj.index].y() - obj.y_pos;
+        newObj.z_speed = x_[obj.index].z() - obj.z_pos;
+
+        return newObj;
+    }
+    /**
+     * @brief right作为观测对象更新Kalman模型
+     * 
+     * @param left 上一帧目标
+     * @param right 下一帧对应的目标，也是观测结果
+     */
+    void kalmanUpdate(PV_OBJ_DATA &left, const PV_OBJ_DATA &right) {
+        // 观测更新
+        PositionMeasurement measure;
+        measure << right.x_pos, right.y_pos, right.z_pos,
+                    right.length, right.width, right.height,
+                    right.intensity;
+        x_[left.index] = ukf_[left.index].update(pmm_, measure);
+        // 目标更新，观测结果right作为left的结果
+        left.x_speed = x_[left.index].x()- left.x_pos; //[left.index].dx() + u_[left.index].ddx();
+        left.y_speed = x_[left.index].y()- left.y_pos; //u_[left.index].dy() + u_[left.index].ddy();
+        left.z_speed = x_[left.index].z()- left.z_pos; //u_[left.index].dz() + u_[left.index].ddz();
+        left.x_pos = x_[left.index].x();
+        left.y_pos = x_[left.index].y();
+        left.z_pos = x_[left.index].z();
+        left.pt1_x = right.pt1_x;
+        left.pt2_x = right.pt2_x;
+        left.pt3_x = right.pt3_x;
+        left.pt4_x = right.pt4_x;
+        left.pt1_y = right.pt1_y;
+        left.pt2_y = right.pt2_y;
+        left.pt3_y = right.pt3_y;
+        left.pt4_y = right.pt4_y;
+        left.length = (left.length + x_[left.index].length()) / 2;
+        left.width = (left.width + x_[left.index].width()) / 2;
+        left.height = (left.height + x_[left.index].height()) / 2;
+        left.intensity = x_[left.index].intensity();
+        predicts_[left.index] = 0;
+        left.track_times += 1;
+    }
+
+    /**
+     * @brief 将Kalman预测结果更新目标，同时预测+1
      *
      * @param obj 目标
      */
-    // TODO 速度与加速度的改变等于改变了运动方向！！！
-    void kalmanProcess(PV_OBJ_DATA &obj)
+    void kalmanProcess(PV_OBJ_DATA &obj, PV_OBJ_DATA &next)
     {
         assert(obj.index < N);
-        x_[obj.index] = ukf_[obj.index].predict(sys_, u_[obj.index]);
         // 使用控制参数改变目标
         obj.x_speed = u_[obj.index].dx() + u_[obj.index].ddx();
         obj.y_speed = u_[obj.index].dy() + u_[obj.index].ddy();
         obj.z_speed = u_[obj.index].dz() + u_[obj.index].ddz();
-        obj.x_pos = x_[obj.index].x() + var_params_.var_pos_x * variance_(generator_); 
-        obj.y_pos = x_[obj.index].y() + var_params_.var_pos_y * variance_(generator_);
-        obj.z_pos = x_[obj.index].z() + var_params_.var_pos_z * variance_(generator_);
-        updateControl(obj.index);
+        // BBox也要移动
+        obj.pt1_x += next.x_pos - obj.x_pos;
+        obj.pt2_x += next.x_pos - obj.x_pos;
+        obj.pt3_x += next.x_pos - obj.x_pos;
+        obj.pt4_x += next.x_pos - obj.x_pos;
+        obj.pt1_y += next.y_pos - obj.y_pos;
+        obj.pt2_y += next.y_pos - obj.y_pos;
+        obj.pt3_y += next.y_pos - obj.y_pos;
+        obj.pt4_y += next.y_pos - obj.y_pos;
+        obj.x_pos = next.x_pos;
+        obj.y_pos = next.y_pos;
+        obj.z_pos = next.z_pos;
         float eu_speed = std::sqrt(obj.x_speed * obj.x_speed + obj.y_speed * obj.y_speed);
         if (eu_speed > obj.max_speed) {
             obj.max_speed = eu_speed;
         }
         predicts_[obj.index] += 1;
         obj.track_times -= 1;  // 雷达目标丢失，重新才跟踪
+        obj.track_times = obj.track_times < 0 ? 0 : obj.track_times;
     }
-    /**
-     * @brief 通过Lidar更新目标与控制，同时更新Kalman目标
-     *
-     * @param left 上一次目标
-     * @param right 当前目标
-     */
-    void kalmanProcess(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
-    {
-        updateControl(left, right);
-        //按照Lidar更新目标
-        left.x_speed = u_[left.index].dx() + u_[left.index].ddx();
-        left.y_speed = u_[left.index].dy() + u_[left.index].ddy();
-        left.z_speed = u_[left.index].dz() + u_[left.index].ddz();
-        left.x_pos = right.x_pos;
-        left.y_pos = right.y_pos;
-        left.z_pos = right.z_pos;
-        left.length = (left.length + right.length) / 2;
-        left.width = (left.width + right.width) / 2;
-        left.height = (left.height + right.height) / 2;
-        left.intensity = right.intensity;
-
-        float eu_speed = std::sqrt(left.x_speed * left.x_speed + left.y_speed * left.y_speed);
-        if (eu_speed > left.max_speed) {
-            left.max_speed = eu_speed;
-        }
-
-        //对应Kalman的预测与更新
-        qint64 t1 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        x_[left.index] = ukf_[left.index].predict(sys_, u_[left.index]);
-        qint64 t2 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        PositionMeasurement measure;
-        measure << right.x_pos, right.y_pos, right.z_pos,
-                    right.length, right.width, right.height,
-                    right.intensity;
-        x_[left.index] = ukf_[left.index].update(pmm_, measure);
-        qint64 t3 = QDateTime::currentMSecsSinceEpoch(); //TEST***
-        kalman_elapsed_predict_ += (t2 - t1); //TEST***
-        kalman_elapsed_update_ += (t3-t2); //TEST***
-        predicts_[left.index] = 0;
-        left.track_times += 1;
-    }
-
     //TEST***
     qint64 kalman_elapsed_predict_ = 0;
     qint64 kalman_elapsed_update_ = 0;
@@ -509,7 +617,7 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
             //dumpObj(nextSet[j], "New-edges");
             // 构造所有边的权重
             // if (d1 < threshold_)  // 阈值过滤
-                edges.push_back( WeightedBipartiteEdge(i, j, d1) );
+            edges.push_back( WeightedBipartiteEdge(i, j, d1) );
         }
         for (size_t j = nextSet.size(); j < prevSet.size(); ++j) {
             edges.push_back( WeightedBipartiteEdge(i, j, 1000.0f) );
@@ -522,7 +630,32 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
     }
     return edges;
 }
-#define DIMS 4
+std::vector<WeightedBipartiteEdge> createCosEdges(const std::vector<PV_OBJ_DATA> &prevSet, const std::vector<PV_OBJ_DATA> &nextSet)
+{
+    // 当前目标 next 与上一次目标 prev 的特征距离
+    std::vector<WeightedBipartiteEdge> edges;
+    for (size_t i = 0; i < prevSet.size(); ++i) {
+        for (size_t j = 0; j < nextSet.size(); ++j) {
+            float d1 = cosDistance(prevSet[i], nextSet[j]); //std::sqrt( delta.dot(delta) ); //计算向量距离
+            // qDebug(",%d,New-edges,%u,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%f",frames,j,nextSet[j].x_pos,nextSet[j].y_pos,nextSet[j].z_pos,nextSet[j].x_pos-prevSet[i].x_pos,nextSet[j].y_pos-prevSet[i].y_pos,nextSet[j].z_pos-prevSet[i].z_pos,nextSet[j].length,nextSet[j].width,nextSet[j].height,nextSet[j].intensity, d1);
+            //qInfo("%f",d1);
+            //dumpObj(nextSet[j], "New-edges");
+            // 构造所有边的权重
+            // if (d1 < threshold_)  // 阈值过滤
+            edges.push_back( WeightedBipartiteEdge(i, j, d1) );
+        }
+        for (size_t j = nextSet.size(); j < prevSet.size(); ++j) {
+            edges.push_back( WeightedBipartiteEdge(i, j, 1000.0f) );
+        }
+    }
+    for (size_t i = prevSet.size(); i < nextSet.size(); ++i) {
+        for (size_t j = 0; j < nextSet.size(); ++j) {
+            edges.push_back(WeightedBipartiteEdge(i, j, 2000.0f));
+        }
+    }
+    return edges;
+}
+#define DIMS 2
 /**
  * @brief 数据格式转换
  *
@@ -532,8 +665,8 @@ std::vector<WeightedBipartiteEdge> createEdges(const std::vector<PV_OBJ_DATA> &p
 Kalman::Vector<float, DIMS> toVector(const PV_OBJ_DATA &data) {
     Kalman::Vector<float, DIMS> target;
     target << //data.width, data.length, data.height,
-              data.x_pos, data.y_pos,//, data.z_pos;
-              data.x_speed, data.y_speed; //, data.z_speed,
+              data.x_pos, data.y_pos;//, data.z_pos;
+              //data.x_speed, data.y_speed; //, data.z_speed,
               //data.intensity;
     return target;
 }
@@ -564,6 +697,20 @@ float mahDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
     return 0.0f;
 }
 
+    /**
+     * @brief 速度的余弦距离
+     * 
+     * @return float 余弦距离[0, 2]
+     */
+    float cosDistance(const PV_OBJ_DATA &left, const PV_OBJ_DATA &right) {
+        Kalman::Vector<float, 2> leftv;
+        leftv << left.x_speed, left.y_speed;
+        Kalman::Vector<float, 2> rightv;
+        rightv << right.x_speed, right.y_speed;
+        leftv.normalize();
+        rightv.normalize();
+        return 1 - leftv.dot(rightv) / (leftv.norm() * rightv.norm());
+    }
 void updateControl(int index)
 {
     // 修正控制变量 u_
@@ -578,12 +725,12 @@ void updateControl(int index)
 void updateControl(PV_OBJ_DATA &left, const PV_OBJ_DATA &right)
 {
     //更新目标的控制
-    u_[left.index].ddx() = right.x_pos - left.x_pos - u_[left.index].dx() + var_params_.var_acc_x * variance_(generator_);; // + 加速度的偏差
-    u_[left.index].ddy() = right.y_pos - left.y_pos - u_[left.index].dy() + var_params_.var_acc_y * variance_(generator_);;
-    u_[left.index].ddz() = right.z_pos - left.z_pos - u_[left.index].dz() + var_params_.var_acc_z * variance_(generator_);;
-    u_[left.index].dx() = right.x_pos - left.x_pos + var_params_.var_vel_x * variance_(generator_);
-    u_[left.index].dy() = right.y_pos - left.y_pos + var_params_.var_vel_y * variance_(generator_);
-    u_[left.index].dz() = right.z_pos - left.z_pos + var_params_.var_vel_z * variance_(generator_);
+    u_[left.index].ddx() = right.x_pos - left.x_pos - left.x_speed; //[left.index].dx() + var_params_.var_acc_x * variance_(generator_);; // + 加速度的偏差
+    u_[left.index].ddy() = right.y_pos - left.y_pos - left.y_speed; // u_[left.index].dy() + var_params_.var_acc_y * variance_(generator_);;
+    u_[left.index].ddz() = right.z_pos - left.z_pos - left.z_speed; //[left.index].dz() + var_params_.var_acc_z * variance_(generator_);;
+    u_[left.index].dx() = right.x_pos - left.x_pos; // + var_params_.var_vel_x * variance_(generator_);
+    u_[left.index].dy() = right.y_pos - left.y_pos; // + var_params_.var_vel_y * variance_(generator_);
+    u_[left.index].dz() = right.z_pos - left.z_pos; // + var_params_.var_vel_z * variance_(generator_);
     u_[left.index].di() = right.intensity - left.intensity;
 }
 };
